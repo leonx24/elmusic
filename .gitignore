@@ -1,2 +1,46 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Transpilation output
+dist/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Directory for instrumented code coverage downloads
+coverage
+.nyc_output
+
+# IDEs and editors
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Environment variables
 .env
-node_moduels
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# TypeScript cache
+*.tsbuildinfo
