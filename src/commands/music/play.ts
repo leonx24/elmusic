@@ -63,7 +63,20 @@ export default class PlayCommand extends Command {
     const searchQuery = /^(https?:\/\/|ytsearch:|ytmsearch:|scsearch:)/.test(query) ? query : `ytmsearch:${query}`;
 
     try {
-      const result = await node.rest.resolve(searchQuery);
+      let result = await node.rest.resolve(searchQuery);
+
+      // Fallback search logic if primary search encounters an error or returns empty
+      if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
+        if (!/^(https?:\/\/)/.test(query)) {
+          // Fallback 1: Standard YouTube Search
+          result = await node.rest.resolve(`ytsearch:${query}`);
+
+          // Fallback 2: SoundCloud Search
+          if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
+            result = await node.rest.resolve(`scsearch:${query}`);
+          }
+        }
+      }
 
       if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0)) {
         return interaction.editReply({
