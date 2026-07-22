@@ -51,7 +51,7 @@ export class MusicEmbedBuilder {
   /**
    * Helper to format millisecond duration into HH:MM:SS
    */
-  private static formatDuration(ms: number): string {
+  public static formatDuration(ms: number): string {
     if (ms === 0) return "Live Stream";
     const totalSecs = Math.floor(ms / 1000);
     const secs = totalSecs % 60;

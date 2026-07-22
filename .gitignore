@@ -44,3 +44,8 @@ Thumbs.db
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Lavalink files
+lavalink/Lavalink.jar
+lavalink/logs/
+lavalink/cache/

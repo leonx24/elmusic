@@ -10,6 +10,18 @@ export default class InteractionCreateEvent extends Event<"interactionCreate"> {
   }
 
   async run(client: BotClient, interaction: Interaction): Promise<unknown> {
+    if (interaction.isAutocomplete()) {
+      const command = client.commands.get(interaction.commandName);
+      if (command && command.autocomplete) {
+        try {
+          await command.autocomplete(client, interaction);
+        } catch (error) {
+          logger.error(`Error in autocomplete for command /${command.name}:`, error);
+        }
+      }
+      return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const command = client.commands.get(interaction.commandName);

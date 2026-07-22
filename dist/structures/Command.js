@@ -7,4 +7,7 @@ export class Command {
         this.description = options.description;
         this.options = options.options || [];
     }
+    async autocomplete(client, interaction) {
+        return;
+    }
 }

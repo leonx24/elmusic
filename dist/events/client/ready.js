@@ -30,6 +30,9 @@ export default class ReadyEvent extends Event {
                 else {
                     logger.error(`Guild with ID ${config.guildId} not found.`);
                 }
+                // Clear global commands to prevent duplicate display
+                logger.info("Clearing global commands...");
+                await client.application?.commands.set([]);
             }
             else {
                 logger.info(`Registering Slash Commands globally...`);

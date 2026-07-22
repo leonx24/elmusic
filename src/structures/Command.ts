@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, ApplicationCommandOptionData } from "discord.js";
+import { ChatInputCommandInteraction, ApplicationCommandOptionData, AutocompleteInteraction } from "discord.js";
 import { BotClient } from "./BotClient.js";
 
 export interface CommandOptions {
@@ -19,4 +19,8 @@ export abstract class Command {
   }
 
   abstract run(client: BotClient, interaction: ChatInputCommandInteraction): Promise<unknown>;
+
+  async autocomplete?(client: BotClient, interaction: AutocompleteInteraction): Promise<unknown> {
+    return;
+  }
 }

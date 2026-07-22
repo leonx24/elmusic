@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, ApplicationCommandOptionType, GuildMember, GuildTextBasedChannel } from "discord.js";
+import { ChatInputCommandInteraction, ApplicationCommandOptionType, GuildMember, GuildTextBasedChannel, AutocompleteInteraction } from "discord.js";
 import { Command } from "../../structures/Command.js";
 import { BotClient } from "../../structures/BotClient.js";
 import { Queue } from "../../structures/Queue.js";
@@ -16,6 +16,7 @@ export default class PlayCommand extends Command {
           description: "The song title or URL to play",
           type: ApplicationCommandOptionType.String,
           required: true,
+          autocomplete: true,
         },
       ],
     });
@@ -40,10 +41,17 @@ export default class PlayCommand extends Command {
       });
     }
 
+    const query = interaction.options.getString("query");
+    if (!query) {
+      return interaction.reply({
+        embeds: [MusicEmbedBuilder.error("Please provide a song title or URL to play.")],
+        ephemeral: true,
+      });
+    }
+
     // Defer the reply because resolving search can take some time
     await interaction.deferReply();
 
-    const query = interaction.options.getString("query", true);
     const node = client.shoukaku.getIdealNode();
     
     if (!node) {
@@ -52,7 +60,7 @@ export default class PlayCommand extends Command {
       });
     }
 
-    const searchQuery = /^https?:\/\//.test(query) ? query : `ytsearch:${query}`;
+    const searchQuery = /^(https?:\/\/|ytsearch:|ytmsearch:|scsearch:)/.test(query) ? query : `ytmsearch:${query}`;
 
     try {
       const result = await node.rest.resolve(searchQuery);
@@ -121,9 +129,17 @@ export default class PlayCommand extends Command {
             ),
           ],
         });
+      } else if (loadType === "empty") {
+        return interaction.editReply({
+          embeds: [MusicEmbedBuilder.error("No results found for your query.")],
+        });
+      } else if (loadType === "error") {
+        return interaction.editReply({
+          embeds: [MusicEmbedBuilder.error("Lavalink failed to load the track. The source might be blocked or unavailable.")],
+        });
       } else {
         return interaction.editReply({
-          embeds: [MusicEmbedBuilder.error("Could not load the track. Unknown load type.")],
+          embeds: [MusicEmbedBuilder.error(`Could not load the track. Unknown load type: "${loadType}"`)],
         });
       }
     } catch (error) {
@@ -131,6 +147,32 @@ export default class PlayCommand extends Command {
       return interaction.editReply({
         embeds: [MusicEmbedBuilder.error("An error occurred while resolving the track.")],
       });
+    }
+  }
+
+  async autocomplete(client: BotClient, interaction: AutocompleteInteraction) {
+    const focusedValue = interaction.options.getFocused();
+    if (!focusedValue) return interaction.respond([]);
+
+    const node = client.shoukaku.getIdealNode();
+    if (!node) return interaction.respond([]);
+
+    try {
+      // Use YouTube Music search via public node to get clean, original suggestions
+      const result = await node.rest.resolve(`ytmsearch:${focusedValue}`);
+      if (!result || !result.data || !Array.isArray(result.data)) {
+        return interaction.respond([]);
+      }
+
+      // Format suggestions for Discord UI (max 25 choices)
+      const choices = result.data.slice(0, 25).map((track: any) => ({
+        name: `${track.info.title} - ${track.info.author}`.substring(0, 100),
+        value: track.info.uri || `ytmsearch:${track.info.title}`,
+      }));
+
+      await interaction.respond(choices);
+    } catch (error) {
+      await interaction.respond([]).catch(() => {});
     }
   }
 }

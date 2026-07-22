@@ -12,6 +12,8 @@ export class Queue {
   public tracks: any[] = [];
   public current: any = null;
   public loop: "none" | "track" | "queue" = "none";
+  public twentyFourSeven = false;
+  public lyricsInterval: NodeJS.Timeout | null = null;
 
   constructor(client: BotClient, player: Player, guildId: string, textChannel: GuildTextBasedChannel) {
     this.client = client;
@@ -23,11 +25,17 @@ export class Queue {
     this.player.on("start", () => this.onTrackStart());
     this.player.on("end", (reason) => this.onTrackEnd(reason));
     this.player.on("exception", (error) => this.onPlayerError(error));
-    this.player.on("closed", () => this.destroy());
+    
+    // Only destroy queue on closed event if NOT in 24/7 mode
+    this.player.on("closed", () => {
+      logger.warn(`Player connection closed in guild ${this.guildId}.`);
+      if (!this.twentyFourSeven) {
+        this.destroy();
+      }
+    });
   }
 
   public addTrack(track: any, requester: string) {
-    // Save the requester info inside the track object for visualization
     const trackWithRequester = { ...track, requester };
     this.tracks.push(trackWithRequester);
     if (!this.current) {
@@ -36,20 +44,23 @@ export class Queue {
   }
 
   public async playNext() {
+    if (this.lyricsInterval) {
+      clearInterval(this.lyricsInterval);
+      this.lyricsInterval = null;
+    }
+
     if (this.tracks.length === 0) {
       this.current = null;
       this.textChannel.send({
-        embeds: [MusicEmbedBuilder.success("Queue Finished", "No more tracks to play. Leaving the voice channel.")]
+        embeds: [MusicEmbedBuilder.success("Queue Finished", "No more tracks to play. Use `/leave` to disconnect me from the voice channel.")]
       }).catch(() => {});
-      this.destroy();
       return;
     }
 
     this.current = this.tracks.shift();
     try {
-      // Shoukaku's playTrack method takes the track's base64/encoded string (track.track or track.encoded)
-      const encodedTrack = this.current.track || this.current.encoded;
-      await this.player.playTrack({ track: encodedTrack });
+      const encodedTrack = this.current.encoded || this.current.track;
+      await this.player.playTrack({ track: { encoded: encodedTrack } });
     } catch (error) {
       logger.error(`Error playing track in guild ${this.guildId}:`, error);
       this.textChannel.send({
@@ -68,10 +79,14 @@ export class Queue {
     this.player.stopTrack();
   }
 
+  public async setVolume(level: number) {
+    // Shoukaku v4 setGlobalVolume changes player volume level (0 to 1000)
+    await this.player.setGlobalVolume(level);
+  }
+
   private onTrackStart() {
     if (!this.current) return;
     
-    // Send standard Jockie/HD style Now Playing Rich Embed
     const trackInfo = this.current.info;
     const requester = this.current.requester;
     
@@ -92,7 +107,6 @@ export class Queue {
       }
     }
 
-    // Auto play next track
     this.playNext();
   }
 
@@ -104,9 +118,12 @@ export class Queue {
   }
 
   public destroy() {
+    if (this.lyricsInterval) {
+      clearInterval(this.lyricsInterval);
+      this.lyricsInterval = null;
+    }
     logger.info(`Destroying queue and leaving channel for guild ${this.guildId}`);
     this.client.shoukaku.leaveVoiceChannel(this.guildId).catch(() => {});
-    // Clear queue references
-    (this.client as any).queues?.delete(this.guildId);
+    this.client.queues.delete(this.guildId);
   }
 }
