@@ -70,13 +70,21 @@ export class Queue {
     }
   }
 
-  public skip() {
-    this.player.stopTrack();
+  public async skip() {
+    try {
+      await this.player.stopTrack();
+    } catch (error) {
+      logger.error(`Error skipping track in guild ${this.guildId}:`, error);
+    }
   }
 
-  public stop() {
+  public async stop() {
     this.tracks = [];
-    this.player.stopTrack();
+    try {
+      await this.player.stopTrack();
+    } catch (error) {
+      logger.error(`Error stopping track in guild ${this.guildId}:`, error);
+    }
   }
 
   public async setVolume(level: number) {

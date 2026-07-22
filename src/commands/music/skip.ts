@@ -39,7 +39,7 @@ export default class SkipCommand extends Command {
     }
 
     const currentTitle = queue.current.info.title;
-    queue.skip();
+    await queue.skip();
 
     return interaction.reply({
       embeds: [MusicEmbedBuilder.success("Skipped", `Skipped the current track: **${currentTitle}**`)],

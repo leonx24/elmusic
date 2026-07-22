@@ -3,10 +3,10 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-# Start Lavalink in the background
+# Start Lavalink in the background with JVM RAM limit (max 256MB)
 echo "Starting Lavalink Server..."
 cd lavalink
-java -jar Lavalink.jar &
+java -Xms64m -Xmx256m -jar Lavalink.jar &
 LAVALINK_PID=$!
 cd ..
 
