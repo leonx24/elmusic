@@ -121,9 +121,33 @@ export class Queue {
         }
         this.playNext();
     }
-    onPlayerError(error) {
+    async onPlayerError(error) {
         logger.error(`Lavalink Player error in guild ${this.guildId}:`, error);
-        this.textChannel.send(MusicEmbedBuilder.error("An error occurred with the Lavalink player.")).catch(() => { });
+        // Automatic SoundCloud fallback for YouTube stream errors
+        if (this.current && !this.current._isFallback) {
+            this.current._isFallback = true;
+            try {
+                const title = this.current.info?.title || "";
+                const author = this.current.info?.author || "";
+                const node = this.client.shoukaku.getIdealNode();
+                if (node) {
+                    logger.info(`Attempting SoundCloud stream fallback for "${title} - ${author}"...`);
+                    const res = await node.rest.resolve(`scsearch:${author} ${title}`);
+                    if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+                        const fallbackTrack = { ...res.data[0], requester: this.current.requester, _isFallback: true };
+                        this.current = fallbackTrack;
+                        const encodedTrack = fallbackTrack.encoded || fallbackTrack.track;
+                        await this.player.playTrack({ track: { encoded: encodedTrack } });
+                        return;
+                    }
+                }
+            }
+            catch (fallbackErr) {
+                logger.error(`SoundCloud fallback failed for guild ${this.guildId}:`, fallbackErr);
+            }
+        }
+        this.textChannel.send(MusicEmbedBuilder.error("Could not stream this track from YouTube or SoundCloud.")).catch(() => { });
+        this.playNext();
     }
     async updateVoiceChannelStatus(statusText) {
         try {

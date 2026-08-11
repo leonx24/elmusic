@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, GuildMember } from "discord.js";
+ import { ChatInputCommandInteraction, GuildMember } from "discord.js";
 import { Command } from "../../structures/Command.js";
 import { BotClient } from "../../structures/BotClient.js";
 import { MusicEmbedBuilder } from "../../utils/embed.js";
