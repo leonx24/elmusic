@@ -85,7 +85,11 @@ export default class PlayCommand extends Command {
       let addedCount = 0;
       for (const sTrack of spotifyData.tracks) {
         try {
-          const res = await node.rest.resolve(`ytmsearch:${sTrack.query}`);
+          // Try SoundCloud search first for 100% reliable streaming
+          let res = await node.rest.resolve(`scsearch:${sTrack.query}`);
+          if (!res || !res.data || (Array.isArray(res.data) && res.data.length === 0) || res.loadType === "error" || res.loadType === "empty") {
+            res = await node.rest.resolve(`ytmsearch:${sTrack.query}`);
+          }
           if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
             queue.addTrack(res.data[0], interaction.user.tag);
             addedCount++;
@@ -97,7 +101,7 @@ export default class PlayCommand extends Command {
 
       if (addedCount === 0) {
         return interaction.editReply(
-          MusicEmbedBuilder.error("Failed to match any tracks from Spotify to YouTube Music.")
+          MusicEmbedBuilder.error("Failed to match any tracks from Spotify.")
         );
       }
 
@@ -118,34 +122,24 @@ export default class PlayCommand extends Command {
       }
     }
 
-    const searchQuery = /^(https?:\/\/|ytsearch:|ytmsearch:|scsearch:)/.test(query) ? query : `ytmsearch:${query}`;
+    // Determine initial search query (use scsearch for plain text to ensure unblocked playback)
+    const searchQuery = /^(https?:\/\/|ytsearch:|ytmsearch:|scsearch:)/.test(query)
+      ? query
+      : `scsearch:${query}`;
 
     try {
       let result = await node.rest.resolve(searchQuery);
 
       // Fallback search logic if primary search encounters an error or returns empty
       if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
-        let fallbackQuery = query;
+        if (!/^(https?:\/\/)/.test(query)) {
+          // Try YouTube Music search fallback
+          result = await node.rest.resolve(`ytmsearch:${query}`);
 
-        // If query was a YouTube URL, attempt extracting video ID or video search fallback
-        const ytIdMatch = query.match(/(?:v=|\/v\/|embed\/|youtu\.be\/|\&v=)([^#\&\?]{11})/);
-        if (ytIdMatch && ytIdMatch[1]) {
-          fallbackQuery = `ytmsearch:${ytIdMatch[1]}`;
-        } else if (!/^(ytsearch:|ytmsearch:|scsearch:)/.test(query)) {
-          fallbackQuery = `ytmsearch:${query.replace(/https?:\/\/\S+/g, "").trim() || query}`;
-        }
-
-        // Try YouTube Music search fallback
-        result = await node.rest.resolve(fallbackQuery);
-
-        // Try YouTube standard search fallback
-        if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
-          result = await node.rest.resolve(`ytsearch:${query}`);
-        }
-
-        // Try SoundCloud search fallback
-        if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
-          result = await node.rest.resolve(`scsearch:${query}`);
+          // Try YouTube standard search fallback
+          if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
+            result = await node.rest.resolve(`ytsearch:${query}`);
+          }
         }
       }
 

@@ -148,12 +148,14 @@ export class Queue {
     if (this.current && !this.current._isFallback) {
       this.current._isFallback = true;
       try {
-        const title = this.current.info?.title || "";
-        const author = this.current.info?.author || "";
+        let title = this.current.info?.title || "";
+        let author = this.current.info?.author || "";
+        if (author === "Unknown Artist") author = "";
+        const searchQuery = `${author} ${title}`.trim();
         const node = this.client.shoukaku.getIdealNode();
-        if (node) {
-          logger.info(`Attempting SoundCloud stream fallback for "${title} - ${author}"...`);
-          const res = await node.rest.resolve(`scsearch:${author} ${title}`);
+        if (node && searchQuery.length > 0) {
+          logger.info(`Attempting SoundCloud stream fallback for "${searchQuery}"...`);
+          const res = await node.rest.resolve(`scsearch:${searchQuery}`);
           if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
             const fallbackTrack = { ...res.data[0], requester: this.current.requester, _isFallback: true };
             this.current = fallbackTrack;
