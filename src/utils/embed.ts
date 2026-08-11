@@ -1,3 +1,4 @@
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { buildV2Container, V2ContainerParams } from "./components-v2.js";
 
 export class MusicComponentBuilder {
@@ -65,15 +66,36 @@ export class MusicComponentBuilder {
   }
 
   /**
-   * Now Playing / Track Start template
+   * Now Playing / Track Start template with interactive buttons
    */
   public static nowPlaying(
     track: { title: string; uri?: string; author: string; length: number },
-    requester: string
+    requester: string,
+    isPaused: boolean = false,
+    isAutoplay: boolean = false
   ) {
     const duration = this.formatDuration(track.length);
     const thumbnailId = this.getYouTubeId(track.uri || "");
     const thumbnailUrl = thumbnailId ? `https://img.youtube.com/vi/${thumbnailId}/hqdefault.jpg` : undefined;
+
+    const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId("music_pause_resume")
+        .setLabel(isPaused ? "Resume" : "Pause")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("music_skip")
+        .setLabel("Skip")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("music_autoplay")
+        .setLabel(isAutoplay ? "Autoplay: ON" : "Autoplay: OFF")
+        .setStyle(isAutoplay ? ButtonStyle.Primary : ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("music_stop")
+        .setLabel("Stop")
+        .setStyle(ButtonStyle.Danger)
+    );
 
     return buildV2Container({
       title: "Now Playing",
@@ -87,6 +109,7 @@ export class MusicComponentBuilder {
             `**Duration:** \`${duration}\` | **Requested By:** ${requester}`,
         },
       ],
+      actionRows: [actionRow],
       footer: "elmusic | leon x music system",
     });
   }

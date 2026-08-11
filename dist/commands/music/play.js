@@ -3,6 +3,7 @@ import { Command } from "../../structures/Command.js";
 import { Queue } from "../../structures/Queue.js";
 import { MusicEmbedBuilder } from "../../utils/embed.js";
 import { logger } from "../../utils/logger.js";
+import { SpotifyResolver } from "../../utils/spotify.js";
 export default class PlayCommand extends Command {
     constructor() {
         super({
@@ -47,6 +48,46 @@ export default class PlayCommand extends Command {
         const node = client.shoukaku.getIdealNode();
         if (!node) {
             return interaction.editReply(MusicEmbedBuilder.error("Lavalink node is not available. Please try again later."));
+        }
+        // Check if query is a Spotify link
+        if (SpotifyResolver.isSpotifyUrl(query)) {
+            const spotifyData = await SpotifyResolver.resolve(query);
+            if (!spotifyData || spotifyData.tracks.length === 0) {
+                return interaction.editReply(MusicEmbedBuilder.error("Could not resolve Spotify link. Make sure the link is public."));
+            }
+            // Join voice channel and get or create queue
+            let queue = client.queues.get(interaction.guildId);
+            if (!queue) {
+                const player = await client.shoukaku.joinVoiceChannel({
+                    guildId: interaction.guildId,
+                    channelId: voiceChannel.id,
+                    shardId: interaction.guild?.shardId ?? 0,
+                });
+                queue = new Queue(client, player, interaction.guildId, interaction.channel);
+                client.queues.set(interaction.guildId, queue);
+            }
+            let addedCount = 0;
+            for (const sTrack of spotifyData.tracks) {
+                try {
+                    const res = await node.rest.resolve(`ytmsearch:${sTrack.query}`);
+                    if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+                        queue.addTrack(res.data[0], interaction.user.tag);
+                        addedCount++;
+                    }
+                }
+                catch (err) {
+                    logger.error(`Error resolving Spotify track "${sTrack.query}":`, err);
+                }
+            }
+            if (addedCount === 0) {
+                return interaction.editReply(MusicEmbedBuilder.error("Failed to match any tracks from Spotify to YouTube Music."));
+            }
+            if (spotifyData.type === "playlist" || spotifyData.type === "album") {
+                return interaction.editReply(MusicEmbedBuilder.success("Spotify Playlist Added", `Added **${addedCount}** tracks from Spotify ${spotifyData.type} **${spotifyData.name}**.`));
+            }
+            else {
+                return interaction.editReply(MusicEmbedBuilder.success("Spotify Track Added", `Enqueued Spotify track: **${spotifyData.name}**.`));
+            }
         }
         const searchQuery = /^(https?:\/\/|ytsearch:|ytmsearch:|scsearch:)/.test(query) ? query : `ytmsearch:${query}`;
         try {

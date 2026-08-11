@@ -1,4 +1,4 @@
-import { GuildTextBasedChannel } from "discord.js";
+import { GuildTextBasedChannel, Routes } from "discord.js";
 import { Player } from "shoukaku";
 import { BotClient } from "./BotClient.js";
 import { MusicEmbedBuilder } from "../utils/embed.js";
@@ -13,6 +13,7 @@ export class Queue {
   public current: any = null;
   public loop: "none" | "track" | "queue" = "none";
   public twentyFourSeven = false;
+  public autoplay = false;
   public lyricsInterval: NodeJS.Timeout | null = null;
 
   constructor(client: BotClient, player: Player, guildId: string, textChannel: GuildTextBasedChannel) {
@@ -51,6 +52,7 @@ export class Queue {
 
     if (this.tracks.length === 0) {
       this.current = null;
+      this.updateVoiceChannelStatus("");
       this.textChannel.send(MusicEmbedBuilder.success("Queue Finished", "No more tracks to play. Use `/leave` to disconnect me from the voice channel.")).catch(() => {});
       return;
     }
@@ -94,10 +96,14 @@ export class Queue {
     const trackInfo = this.current.info;
     const requester = this.current.requester;
     
-    this.textChannel.send(MusicEmbedBuilder.nowPlaying(trackInfo, requester)).catch(() => {});
+    this.updateVoiceChannelStatus(`${trackInfo.title} - ${trackInfo.author}`.substring(0, 50));
+
+    this.textChannel.send(
+      MusicEmbedBuilder.nowPlaying(trackInfo, requester, this.player.paused, this.autoplay)
+    ).catch(() => {});
   }
 
-  private onTrackEnd(reason: any) {
+  private async onTrackEnd(reason: any) {
     logger.info(`Track ended in guild ${this.guildId}. Reason: ${reason.reason}`);
     
     // Handle loop status
@@ -109,6 +115,29 @@ export class Queue {
       }
     }
 
+    // Autoplay logic if queue is empty
+    if (this.tracks.length === 0 && this.autoplay && this.current) {
+      try {
+        const lastTitle = this.current.info.title;
+        const lastAuthor = this.current.info.author;
+        const node = this.client.shoukaku.getIdealNode();
+        if (node) {
+          const res = await node.rest.resolve(`ytmsearch:${lastAuthor} - ${lastTitle} mix`);
+          if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+            const nextTrack = res.data.find((t: any) => t.info?.identifier !== this.current.info?.identifier) || res.data[0];
+            if (nextTrack) {
+              this.tracks.push({ ...nextTrack, requester: "Autoplay" });
+              this.textChannel.send(
+                MusicEmbedBuilder.success("Autoplay", `Autoplay queued next song: **[${nextTrack.info.title}](${nextTrack.info.uri || "#"})**`)
+              ).catch(() => {});
+            }
+          }
+        }
+      } catch (err) {
+        logger.error(`Autoplay resolution failed in guild ${this.guildId}:`, err);
+      }
+    }
+
     this.playNext();
   }
 
@@ -117,11 +146,26 @@ export class Queue {
     this.textChannel.send(MusicEmbedBuilder.error("An error occurred with the Lavalink player.")).catch(() => {});
   }
 
+  private async updateVoiceChannelStatus(statusText: string) {
+    try {
+      const guild = this.client.guilds.cache.get(this.guildId);
+      const voiceChannelId = guild?.members.me?.voice.channelId;
+      if (voiceChannelId) {
+        await this.client.rest.put(Routes.channelVoiceStatus(voiceChannelId), {
+          body: { status: statusText },
+        });
+      }
+    } catch (err) {
+      // Silently catch if bot lacks permission or status update fails
+    }
+  }
+
   public destroy() {
     if (this.lyricsInterval) {
       clearInterval(this.lyricsInterval);
       this.lyricsInterval = null;
     }
+    this.updateVoiceChannelStatus("");
     logger.info(`Destroying queue and leaving channel for guild ${this.guildId}`);
     this.client.shoukaku.leaveVoiceChannel(this.guildId).catch(() => {});
     this.client.queues.delete(this.guildId);

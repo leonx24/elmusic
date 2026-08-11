@@ -1,3 +1,4 @@
+import { Routes } from "discord.js";
 import { MusicEmbedBuilder } from "../utils/embed.js";
 import { logger } from "../utils/logger.js";
 export class Queue {
@@ -9,6 +10,7 @@ export class Queue {
     current = null;
     loop = "none";
     twentyFourSeven = false;
+    autoplay = false;
     lyricsInterval = null;
     constructor(client, player, guildId, textChannel) {
         this.client = client;
@@ -41,6 +43,7 @@ export class Queue {
         }
         if (this.tracks.length === 0) {
             this.current = null;
+            this.updateVoiceChannelStatus("");
             this.textChannel.send(MusicEmbedBuilder.success("Queue Finished", "No more tracks to play. Use `/leave` to disconnect me from the voice channel.")).catch(() => { });
             return;
         }
@@ -81,9 +84,10 @@ export class Queue {
             return;
         const trackInfo = this.current.info;
         const requester = this.current.requester;
-        this.textChannel.send(MusicEmbedBuilder.nowPlaying(trackInfo, requester)).catch(() => { });
+        this.updateVoiceChannelStatus(`${trackInfo.title} - ${trackInfo.author}`.substring(0, 50));
+        this.textChannel.send(MusicEmbedBuilder.nowPlaying(trackInfo, requester, this.player.paused, this.autoplay)).catch(() => { });
     }
-    onTrackEnd(reason) {
+    async onTrackEnd(reason) {
         logger.info(`Track ended in guild ${this.guildId}. Reason: ${reason.reason}`);
         // Handle loop status
         if (this.current) {
@@ -94,17 +98,53 @@ export class Queue {
                 this.tracks.push(this.current);
             }
         }
+        // Autoplay logic if queue is empty
+        if (this.tracks.length === 0 && this.autoplay && this.current) {
+            try {
+                const lastTitle = this.current.info.title;
+                const lastAuthor = this.current.info.author;
+                const node = this.client.shoukaku.getIdealNode();
+                if (node) {
+                    const res = await node.rest.resolve(`ytmsearch:${lastAuthor} - ${lastTitle} mix`);
+                    if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+                        const nextTrack = res.data.find((t) => t.info?.identifier !== this.current.info?.identifier) || res.data[0];
+                        if (nextTrack) {
+                            this.tracks.push({ ...nextTrack, requester: "Autoplay" });
+                            this.textChannel.send(MusicEmbedBuilder.success("Autoplay", `Autoplay queued next song: **[${nextTrack.info.title}](${nextTrack.info.uri || "#"})**`)).catch(() => { });
+                        }
+                    }
+                }
+            }
+            catch (err) {
+                logger.error(`Autoplay resolution failed in guild ${this.guildId}:`, err);
+            }
+        }
         this.playNext();
     }
     onPlayerError(error) {
         logger.error(`Lavalink Player error in guild ${this.guildId}:`, error);
         this.textChannel.send(MusicEmbedBuilder.error("An error occurred with the Lavalink player.")).catch(() => { });
     }
+    async updateVoiceChannelStatus(statusText) {
+        try {
+            const guild = this.client.guilds.cache.get(this.guildId);
+            const voiceChannelId = guild?.members.me?.voice.channelId;
+            if (voiceChannelId) {
+                await this.client.rest.put(Routes.channelVoiceStatus(voiceChannelId), {
+                    body: { status: statusText },
+                });
+            }
+        }
+        catch (err) {
+            // Silently catch if bot lacks permission or status update fails
+        }
+    }
     destroy() {
         if (this.lyricsInterval) {
             clearInterval(this.lyricsInterval);
             this.lyricsInterval = null;
         }
+        this.updateVoiceChannelStatus("");
         logger.info(`Destroying queue and leaving channel for guild ${this.guildId}`);
         this.client.shoukaku.leaveVoiceChannel(this.guildId).catch(() => { });
         this.client.queues.delete(this.guildId);
