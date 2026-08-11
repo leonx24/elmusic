@@ -93,10 +93,10 @@ export default class PlayCommand extends Command {
                 return interaction.editReply(MusicEmbedBuilder.success("Spotify Track Added", `Enqueued Spotify track: **${spotifyData.name}**.`));
             }
         }
-        // Determine initial search query (use scsearch for plain text to ensure unblocked playback)
+        // Determine initial search query (use ytmsearch with OAuth TV/WEB client)
         const searchQuery = /^(https?:\/\/|ytsearch:|ytmsearch:|scsearch:)/.test(query)
             ? query
-            : `scsearch:${query}`;
+            : `ytmsearch:${query}`;
         try {
             let result = await node.rest.resolve(searchQuery);
             // Fallback search logic if primary search encounters an error or returns empty
@@ -120,10 +120,6 @@ export default class PlayCommand extends Command {
                 const cleanSearch = fallbackText.replace(/https?:\/\/\S+/g, "").trim() || query;
                 // Try SoundCloud search fallback
                 result = await node.rest.resolve(`scsearch:${cleanSearch}`);
-                // Try YouTube Music search fallback
-                if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
-                    result = await node.rest.resolve(`ytmsearch:${cleanSearch}`);
-                }
                 // Try YouTube standard search fallback
                 if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
                     result = await node.rest.resolve(`ytsearch:${cleanSearch}`);
