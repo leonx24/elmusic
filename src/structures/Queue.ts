@@ -146,11 +146,11 @@ export class Queue {
   }
 
   private async onTrackEnd(reason: any) {
-    const endReason = typeof reason === "string" ? reason : reason?.reason;
+    const endReason = (typeof reason === "string" ? reason : reason?.reason || "").toLowerCase();
     logger.info(`Track ended in guild ${this.guildId}. Reason: ${endReason}`);
     
-    // Ignore end event if track was replaced by another track or connection was cleaned up
-    if (endReason === "replaced" || endReason === "cleanup") {
+    // Ignore end event if track was replaced, cleaned up, or failed (loadFailed is handled by onPlayerError)
+    if (endReason === "replaced" || endReason === "cleanup" || endReason === "loadfailed" || endReason === "failed") {
       return;
     }
 
@@ -302,20 +302,23 @@ export class Queue {
         let title = current.info?.title || "";
         let author = current.info?.author || "";
         if (author === "Unknown Artist") author = "";
-        const searchQuery = `${author} ${title} audio`.trim();
+        const searchQuery = `${author} ${title}`.trim();
         const node = this.client.shoukaku.getIdealNode();
         if (node && searchQuery.length > 0) {
           logger.info(`Attempting stream fallback for "${searchQuery}"...`);
-          let res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
+          let res = await node.rest.resolve(`scsearch:${searchQuery}`);
           if (!res || !res.data || !Array.isArray(res.data) || res.data.length === 0) {
-            res = await node.rest.resolve(`scsearch:${searchQuery}`);
+            res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
           }
           if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-            const fallbackTrack = { ...res.data[0], requester: current.requester, _isFallback: true };
-            this.current = fallbackTrack;
-            const encodedTrack = fallbackTrack.encoded || (fallbackTrack as any).track;
-            await this.player.playTrack({ track: { encoded: encodedTrack } });
-            return;
+            const fallbackCandidate = res.data.find((t: any) => t.info?.identifier !== current.info?.identifier) || res.data[0];
+            if (fallbackCandidate && fallbackCandidate.info?.identifier !== current.info?.identifier) {
+              const fallbackTrack = { ...fallbackCandidate, requester: current.requester, _isFallback: true };
+              this.current = fallbackTrack;
+              const encodedTrack = fallbackTrack.encoded || (fallbackTrack as any).track;
+              await this.player.playTrack({ track: { encoded: encodedTrack } });
+              return;
+            }
           }
         }
       } catch (fallbackErr) {

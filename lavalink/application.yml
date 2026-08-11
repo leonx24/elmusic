@@ -51,11 +51,10 @@ plugins:
       refreshToken: "${YOUTUBE_REFRESH_TOKEN:}"
       skipInitialization: false
     clients:
+      - TV
       - MUSIC
+      - ANDROID_MUSIC
       - WEB
-      - ANDROID_TESTSUITE
-      - TVHTML5EMBEDDED
-      - IOS
 
 logging:
   file:
