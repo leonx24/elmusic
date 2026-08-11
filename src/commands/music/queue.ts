@@ -46,16 +46,15 @@ export default class QueueCommand extends Command {
 
     return interaction.reply(
       buildV2Container({
-        title: `🎶 Music Queue for ${interaction.guild?.name}`,
+        title: `Music Queue - ${interaction.guild?.name}`,
         description: nowPlayingText,
-        accentColor: 0x5865f2,
         sections: [
           {
-            title: "📋 Up Next",
+            title: "Up Next",
             content: queueListText,
           },
           {
-            title: "📊 Status & Settings",
+            title: "Status & Settings",
             content: `• **Total Songs:** ${tracksList.length + 1}\n• **Loop Mode:** ${queue.loop.toUpperCase()}\n• **24/7 Standby:** ${queue.twentyFourSeven ? "ENABLED" : "DISABLED"}`,
           },
         ],

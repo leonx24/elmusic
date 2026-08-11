@@ -39,10 +39,11 @@ export class MusicComponentBuilder {
      * Success response template
      */
     static success(title, description) {
+        // Strip leading checkmarks/emojis from title if passed
+        const cleanTitle = title.replace(/^[\u{1F300}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}✅❌🎵🎤🎶📌📊⏰🔁]\s*/u, "");
         return buildV2Container({
-            title: `✅ ${title}`,
+            title: cleanTitle,
             description,
-            accentColor: 0x2ecc71, // Green
             footer: "elmusic | leon x music system",
         });
     }
@@ -51,9 +52,8 @@ export class MusicComponentBuilder {
      */
     static error(description) {
         return buildV2Container({
-            title: "❌ Error",
+            title: "Error",
             description,
-            accentColor: 0xe74c3c, // Red
             footer: "elmusic | leon x music system",
         });
     }
@@ -65,15 +65,14 @@ export class MusicComponentBuilder {
         const thumbnailId = this.getYouTubeId(track.uri || "");
         const thumbnailUrl = thumbnailId ? `https://img.youtube.com/vi/${thumbnailId}/hqdefault.jpg` : undefined;
         return buildV2Container({
-            title: "🎵 Now Playing",
+            title: "Now Playing",
             description: `[**${track.title}**](${track.uri || "#"})`,
             thumbnailUrl,
-            accentColor: 0x5865f2,
             sections: [
                 {
-                    title: "📌 Song Information",
-                    content: `👤 **Author:** ${track.author}\n` +
-                        `⏱️ **Duration:** \`${duration}\` | 👤 **Requested By:** ${requester}`,
+                    title: "Track Details",
+                    content: `**Author:** ${track.author}\n` +
+                        `**Duration:** \`${duration}\` | **Requested By:** ${requester}`,
                 },
             ],
             footer: "elmusic | leon x music system",

@@ -262,9 +262,8 @@ export default class LyricsCommand extends Command {
     const duration = MusicEmbedBuilder.formatDuration(totalLength);
 
     return buildV2Container({
-      title: `🎤 Live Lyrics: ${trackName}`,
-      description: `👤 **Artist:** ${artistName}\n\n${displayLines.join("\n\n")}`,
-      accentColor: 0x5865f2,
+      title: `Live Lyrics: ${trackName}`,
+      description: `**Artist:** ${artistName}\n\n${displayLines.join("\n\n")}`,
       footer: `Playing: ${trackName} | [${elapsed} / ${duration}]`,
     });
   }
@@ -280,9 +279,8 @@ export default class LyricsCommand extends Command {
 
     return interaction.editReply(
       buildV2Container({
-        title: `🎤 Lyrics: ${trackName}`,
-        description: `👤 **Artist:** ${artistName}\n\n${lyricsText}`,
-        accentColor: 0x5865f2,
+        title: `Lyrics: ${trackName}`,
+        description: `**Artist:** ${artistName}\n\n${lyricsText}`,
         footer: "Lyrics powered by LRCLIB (Plain Mode)",
       })
     );
@@ -299,9 +297,8 @@ export default class LyricsCommand extends Command {
 
     return interaction.editReply(
       buildV2Container({
-        title: "❌ No Lyrics Found",
+        title: "No Lyrics Found",
         description: tipsContent,
-        accentColor: 0xe74c3c,
         footer: "elmusic | leon x music system",
       })
     );
