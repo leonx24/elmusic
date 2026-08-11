@@ -144,12 +144,16 @@ export class Queue {
   private async onPlayerError(error: any) {
     logger.error(`Lavalink Player error in guild ${this.guildId}:`, error);
 
+    // Snapshot current to avoid null-ref if track ends while fallback is async
+    const current = this.current;
+
     // Automatic fallback for YouTube/SoundCloud stream errors
-    if (this.current && !this.current._isFallback) {
-      this.current._isFallback = true;
+    if (current && !current._isFallback) {
+      current._isFallback = true;
+      if (this.current) this.current._isFallback = true;
       try {
-        let title = this.current.info?.title || "";
-        let author = this.current.info?.author || "";
+        let title = current.info?.title || "";
+        let author = current.info?.author || "";
         if (author === "Unknown Artist") author = "";
         const searchQuery = `${author} ${title} audio`.trim();
         const node = this.client.shoukaku.getIdealNode();
@@ -160,7 +164,7 @@ export class Queue {
             res = await node.rest.resolve(`scsearch:${searchQuery}`);
           }
           if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-            const fallbackTrack = { ...res.data[0], requester: this.current.requester, _isFallback: true };
+            const fallbackTrack = { ...res.data[0], requester: current.requester, _isFallback: true };
             this.current = fallbackTrack;
             const encodedTrack = fallbackTrack.encoded || (fallbackTrack as any).track;
             await this.player.playTrack({ track: { encoded: encodedTrack } });
