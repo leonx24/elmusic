@@ -180,24 +180,37 @@ export default class PlayCommand extends Command {
         }
     }
     async autocomplete(client, interaction) {
-        const focusedValue = interaction.options.getFocused();
-        if (!focusedValue)
-            return interaction.respond([]);
+        const focusedValue = interaction.options.getFocused()?.trim();
+        if (!focusedValue || focusedValue.length < 2) {
+            return interaction.respond([]).catch(() => { });
+        }
         const node = client.shoukaku.getIdealNode();
         if (!node)
-            return interaction.respond([]);
+            return interaction.respond([]).catch(() => { });
         try {
-            // Use YouTube Music search via public node to get clean, original suggestions
-            const result = await node.rest.resolve(`ytmsearch:${focusedValue}`);
+            // Timeout promise after 2000ms to guarantee response within Discord's 3s limit
+            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 2000));
+            const searchPromise = (async () => {
+                let res = await node.rest.resolve(`scsearch:${focusedValue}`);
+                if (!res || !res.data || !Array.isArray(res.data) || res.data.length === 0) {
+                    res = await node.rest.resolve(`ytmsearch:${focusedValue}`);
+                }
+                return res;
+            })();
+            const result = (await Promise.race([searchPromise, timeoutPromise]));
             if (!result || !result.data || !Array.isArray(result.data)) {
-                return interaction.respond([]);
+                return interaction.respond([]).catch(() => { });
             }
-            // Format suggestions for Discord UI (max 25 choices)
-            const choices = result.data.slice(0, 25).map((track) => ({
-                name: `${track.info.title} - ${track.info.author}`.substring(0, 100),
-                value: track.info.uri || `ytmsearch:${track.info.title}`,
-            }));
-            await interaction.respond(choices);
+            const choices = result.data.slice(0, 10).map((track) => {
+                const title = track.info?.title || "Track";
+                const author = track.info?.author || "";
+                const label = author && author !== "Unknown Artist" ? `${title} - ${author}` : title;
+                return {
+                    name: label.substring(0, 100),
+                    value: label.substring(0, 100),
+                };
+            });
+            await interaction.respond(choices).catch(() => { });
         }
         catch (error) {
             await interaction.respond([]).catch(() => { });
