@@ -51,9 +51,7 @@ export class Queue {
 
     if (this.tracks.length === 0) {
       this.current = null;
-      this.textChannel.send({
-        embeds: [MusicEmbedBuilder.success("Queue Finished", "No more tracks to play. Use `/leave` to disconnect me from the voice channel.")]
-      }).catch(() => {});
+      this.textChannel.send(MusicEmbedBuilder.success("Queue Finished", "No more tracks to play. Use `/leave` to disconnect me from the voice channel.")).catch(() => {});
       return;
     }
 
@@ -63,9 +61,7 @@ export class Queue {
       await this.player.playTrack({ track: { encoded: encodedTrack } });
     } catch (error) {
       logger.error(`Error playing track in guild ${this.guildId}:`, error);
-      this.textChannel.send({
-        embeds: [MusicEmbedBuilder.error("Could not play the next track.")]
-      }).catch(() => {});
+      this.textChannel.send(MusicEmbedBuilder.error("Could not play the next track.")).catch(() => {});
       this.playNext();
     }
   }
@@ -98,9 +94,7 @@ export class Queue {
     const trackInfo = this.current.info;
     const requester = this.current.requester;
     
-    this.textChannel.send({
-      embeds: [MusicEmbedBuilder.nowPlaying(trackInfo, requester)]
-    }).catch(() => {});
+    this.textChannel.send(MusicEmbedBuilder.nowPlaying(trackInfo, requester)).catch(() => {});
   }
 
   private onTrackEnd(reason: any) {
@@ -120,9 +114,7 @@ export class Queue {
 
   private onPlayerError(error: any) {
     logger.error(`Lavalink Player error in guild ${this.guildId}:`, error);
-    this.textChannel.send({
-      embeds: [MusicEmbedBuilder.error("An error occurred with the Lavalink player.")]
-    }).catch(() => {});
+    this.textChannel.send(MusicEmbedBuilder.error("An error occurred with the Lavalink player.")).catch(() => {});
   }
 
   public destroy() {

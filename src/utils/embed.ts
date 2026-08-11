@@ -1,51 +1,112 @@
-import { EmbedBuilder } from "discord.js";
 import { config } from "../config.js";
 
-export class MusicEmbedBuilder {
+export interface ComponentV2Message {
+  flags: number;
+  components: any[];
+}
+
+export class MusicComponentBuilder {
+  public static readonly FLAGS = 32768; // MessageFlags.IsComponentsV2 (1 << 15)
+
   /**
-   * Create a base embed with theme color and default footer
+   * Helper to wrap child components into a Container (Type 17) payload
    */
-  public static base(): EmbedBuilder {
-    return new EmbedBuilder()
-      .setColor(config.embedColor as any)
-      .setTimestamp()
-      .setFooter({ text: "elmusic | leon x music system" });
+  public static container(children: any[], accentColor?: number): ComponentV2Message {
+    return {
+      flags: this.FLAGS,
+      components: [
+        {
+          type: 17, // Container
+          accent_color: accentColor,
+          components: children,
+        },
+      ],
+    };
   }
 
   /**
-   * Success template
+   * TextDisplay component (Type 10)
    */
-  public static success(title: string, description: string): EmbedBuilder {
-    return this.base()
-      .setTitle(`✅ ${title}`)
-      .setDescription(description)
-      .setColor(0x2ecc71); // Green
+  public static text(content: string): { type: number; content: string } {
+    return {
+      type: 10,
+      content,
+    };
   }
 
   /**
-   * Error template
+   * Separator component (Type 14)
    */
-  public static error(description: string): EmbedBuilder {
-    return this.base()
-      .setTitle("❌ Error")
-      .setDescription(description)
-      .setColor(0xe74c3c); // Red
+  public static separator(): { type: number } {
+    return {
+      type: 14,
+    };
   }
 
   /**
-   * Now Playing / Track Start template (resembles Jockie Music details layout)
+   * Success response template
    */
-  public static nowPlaying(track: { title: string; uri?: string; author: string; length: number }, requester: string): EmbedBuilder {
+  public static success(title: string, description: string): ComponentV2Message {
+    return this.container(
+      [
+        this.text(`### ✅ ${title}\n${description}`),
+        this.separator(),
+        this.text(`*elmusic | leon x music system*`),
+      ],
+      0x2ecc71 // Green
+    );
+  }
+
+  /**
+   * Error response template
+   */
+  public static error(description: string): ComponentV2Message {
+    return this.container(
+      [
+        this.text(`### ❌ Error\n${description}`),
+        this.separator(),
+        this.text(`*elmusic | leon x music system*`),
+      ],
+      0xe74c3c // Red
+    );
+  }
+
+  /**
+   * Now Playing / Track Start template
+   */
+  public static nowPlaying(
+    track: { title: string; uri?: string; author: string; length: number },
+    requester: string
+  ): ComponentV2Message {
     const duration = this.formatDuration(track.length);
-    return this.base()
-      .setTitle("🎵 Now Playing")
-      .setDescription(`[${track.title}](${track.uri || "#"})`)
-      .addFields(
-        { name: "Author", value: track.author, inline: true },
-        { name: "Duration", value: duration, inline: true },
-        { name: "Requested By", value: requester, inline: true }
-      )
-      .setThumbnail(`https://img.youtube.com/vi/${this.getYouTubeId(track.uri || "")}/hqdefault.jpg`);
+    const thumbnailId = this.getYouTubeId(track.uri || "");
+
+    const contentText =
+      `## 🎵 Now Playing\n` +
+      `[**${track.title}**](${track.uri || "#"})\n\n` +
+      `👤 **Author:** ${track.author}\n` +
+      `⏱️ **Duration:** \`${duration}\` | 👤 **Requested By:** ${requester}`;
+
+    const children: any[] = [this.text(contentText)];
+
+    if (thumbnailId) {
+      children.push(this.separator());
+      children.push({
+        type: 9, // Section
+        components: [
+          this.text(`*elmusic | leon x music system*`),
+        ],
+        accessory: {
+          type: 11, // Thumbnail
+          url: `https://img.youtube.com/vi/${thumbnailId}/hqdefault.jpg`,
+        },
+      });
+    } else {
+      children.push(this.separator());
+      children.push(this.text(`*elmusic | leon x music system*`));
+    }
+
+    return this.container(children, 0x5865f2);
   }
 
   /**
@@ -72,3 +133,7 @@ export class MusicEmbedBuilder {
     return match && match[2].length === 11 ? match[2] : "";
   }
 }
+
+// Export backward compatible alias
+export const MusicEmbedBuilder = MusicComponentBuilder;
+

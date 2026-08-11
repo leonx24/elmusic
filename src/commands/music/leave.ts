@@ -17,7 +17,7 @@ export default class LeaveCommand extends Command {
 
     if (!voiceChannel) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("You must be in a voice channel to use this command.")],
+        ...MusicEmbedBuilder.error("You must be in a voice channel to use this command."),
         ephemeral: true,
       });
     }
@@ -25,14 +25,14 @@ export default class LeaveCommand extends Command {
     const selfMember = interaction.guild?.members.me;
     if (!selfMember?.voice.channel) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("I am not connected to any voice channel.")],
+        ...MusicEmbedBuilder.error("I am not connected to any voice channel."),
         ephemeral: true,
       });
     }
 
     if (selfMember.voice.channel.id !== voiceChannel.id) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("You must be in the same voice channel as me to make me leave.")],
+        ...MusicEmbedBuilder.error("You must be in the same voice channel as me to make me leave."),
         ephemeral: true,
       });
     }
@@ -45,8 +45,8 @@ export default class LeaveCommand extends Command {
       await client.shoukaku.leaveVoiceChannel(interaction.guildId!);
     }
 
-    return interaction.reply({
-      embeds: [MusicEmbedBuilder.success("Disconnected", "Successfully disconnected from the voice channel and cleared the queue.")],
-    });
+    return interaction.reply(
+      MusicEmbedBuilder.success("Disconnected", "Successfully disconnected from the voice channel and cleared the queue.")
+    );
   }
 }

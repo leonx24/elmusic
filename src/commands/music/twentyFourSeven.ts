@@ -17,7 +17,7 @@ export default class TwentyFourSevenCommand extends Command {
 
     if (!voiceChannel) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("You must be in a voice channel to use this command.")],
+        ...MusicEmbedBuilder.error("You must be in a voice channel to use this command."),
         ephemeral: true,
       });
     }
@@ -25,7 +25,7 @@ export default class TwentyFourSevenCommand extends Command {
     const queue = client.queues.get(interaction.guildId!);
     if (!queue) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("There is no music queue active right now. Play some music first!")],
+        ...MusicEmbedBuilder.error("There is no music queue active right now. Play some music first!"),
         ephemeral: true,
       });
     }
@@ -33,7 +33,7 @@ export default class TwentyFourSevenCommand extends Command {
     const selfMember = interaction.guild?.members.me;
     if (selfMember?.voice.channel && selfMember.voice.channel.id !== voiceChannel.id) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("You must be in the same voice channel as me to toggle 24/7 mode.")],
+        ...MusicEmbedBuilder.error("You must be in the same voice channel as me to toggle 24/7 mode."),
         ephemeral: true,
       });
     }
@@ -46,8 +46,8 @@ export default class TwentyFourSevenCommand extends Command {
       ? "The bot will now stay in the voice channel even after the queue finishes." 
       : "The bot will now automatically leave the voice channel when the queue is empty.";
 
-    return interaction.reply({
-      embeds: [MusicEmbedBuilder.success(`24/7 Mode: ${statusText}`, descriptionText)],
-    });
+    return interaction.reply(
+      MusicEmbedBuilder.success(`24/7 Mode: ${statusText}`, descriptionText)
+    );
   }
 }

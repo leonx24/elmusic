@@ -15,7 +15,7 @@ export default class QueueCommand extends Command {
     const queue = client.queues.get(interaction.guildId!);
     if (!queue || !queue.current) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("There is no music playing right now.")],
+        ...MusicEmbedBuilder.error("There is no music playing right now."),
         ephemeral: true,
       });
     }
@@ -43,15 +43,21 @@ export default class QueueCommand extends Command {
       }
     }
 
-    const embed = MusicEmbedBuilder.base()
-      .setTitle(`🎶 Music Queue for ${interaction.guild?.name}`)
-      .setDescription(`${nowPlayingText}\n\n**Up Next:**\n${queueListText}`)
-      .addFields(
-        { name: "Total Songs", value: `${tracksList.length + 1}`, inline: true },
-        { name: "Loop Mode", value: `${queue.loop.toUpperCase()}`, inline: true },
-        { name: "24/7 Mode", value: `${queue.twentyFourSeven ? "ENABLED" : "DISABLED"}`, inline: true }
-      );
+    const contentText =
+      `## 🎶 Music Queue for ${interaction.guild?.name}\n\n` +
+      `${nowPlayingText}\n\n` +
+      `**Up Next:**\n${queueListText}\n\n` +
+      `📊 **Total Songs:** ${tracksList.length + 1} | 🔁 **Loop Mode:** ${queue.loop.toUpperCase()} | ⏰ **24/7:** ${queue.twentyFourSeven ? "ENABLED" : "DISABLED"}`;
 
-    return interaction.reply({ embeds: [embed] });
+    const payload = MusicEmbedBuilder.container(
+      [
+        MusicEmbedBuilder.text(contentText),
+        MusicEmbedBuilder.separator(),
+        MusicEmbedBuilder.text("*elmusic | leon x music system*"),
+      ],
+      0x5865f2
+    );
+
+    return interaction.reply(payload);
   }
 }

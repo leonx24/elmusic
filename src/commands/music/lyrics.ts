@@ -37,13 +37,11 @@ export default class LyricsCommand extends Command {
 
     if (!query) {
       if (!queue || !queue.current) {
-        return interaction.editReply({
-          embeds: [
-            MusicEmbedBuilder.error(
-              "No music is playing right now. Please provide a song title using `/lyrics query: [song]`"
-            ),
-          ],
-        });
+        return interaction.editReply(
+          MusicEmbedBuilder.error(
+            "No music is playing right now. Please provide a song title using `/lyrics query: [song]`"
+          )
+        );
       }
       query = `${queue.current.info.author} - ${queue.current.info.title}`;
     }
@@ -102,31 +100,26 @@ export default class LyricsCommand extends Command {
           if (romajiResponse.ok) {
             const romajiData = (await romajiResponse.json()) as any[];
             if (Array.isArray(romajiData) && romajiData.length > 0) {
-              // Find the first result in romaji search that has lyrics and doesn't contain Japanese characters
-              let romajiTrack = null;
-              for (const track of romajiData) {
-                const lyr = track.plainLyrics || track.syncedLyrics || "";
-                if (lyr.trim().length > 0 && !this.hasJapanese(lyr)) {
-                  romajiTrack = track;
+              for (const rTrack of romajiData) {
+                if ((rTrack.syncedLyrics && rTrack.syncedLyrics.trim().length > 0) ||
+                    (rTrack.plainLyrics && rTrack.plainLyrics.trim().length > 0)) {
+                  logger.info(`Successfully retrieved Romaji lyrics for: ${cleanQuery}`);
+                  matchedTrack = rTrack;
                   break;
                 }
               }
-              if (romajiTrack) {
-                logger.info(`Found Romaji lyrics match: "${romajiTrack.trackName}" by ${romajiTrack.artistName}`);
-                matchedTrack = romajiTrack;
-              }
             }
           }
-        } catch (romajiErr) {
-          logger.error("Failed to perform secondary Romaji search:", romajiErr);
+        } catch (rErr) {
+          logger.warn("Secondary Romaji lyrics lookup failed, falling back to primary lyrics:", rErr);
         }
       }
 
-      const artistName = matchedTrack.artistName || "Unknown Artist";
-      const trackName = matchedTrack.trackName || "Unknown Track";
+      const trackName = matchedTrack.trackName || queue?.current?.info?.title || cleanQuery;
+      const artistName = matchedTrack.artistName || queue?.current?.info?.author || "";
 
-      // If it's live mode and syncedLyrics is available, start live scrolling lyrics!
-      if (isLiveMode && queue && matchedTrack.syncedLyrics && matchedTrack.syncedLyrics.trim().length > 0) {
+      // If live mode is possible and we have synced lyrics, run live scrolling lyrics
+      if (isLiveMode && matchedTrack.syncedLyrics && matchedTrack.syncedLyrics.trim().length > 0) {
         logger.info(`Entering Live Lyrics mode for: ${trackName} in guild ${interaction.guildId}`);
         const parsedLyrics = this.parseLRC(matchedTrack.syncedLyrics);
         
@@ -144,7 +137,7 @@ export default class LyricsCommand extends Command {
 
         // Send initial frame
         const initialEmbed = this.buildLiveLyricsEmbed(parsedLyrics, queue.player.position, trackName, artistName, queue.current.info.length);
-        await interaction.editReply({ embeds: [initialEmbed] });
+        await interaction.editReply(initialEmbed);
 
         // Set interval to update active line every 3.5 seconds
         const interval = setInterval(async () => {
@@ -161,7 +154,7 @@ export default class LyricsCommand extends Command {
           const currentPos = activeQueue.player.position;
           const liveEmbed = this.buildLiveLyricsEmbed(parsedLyrics, currentPos, trackName, artistName, activeQueue.current.info.length);
           
-          await interaction.editReply({ embeds: [liveEmbed] }).catch(() => {
+          await interaction.editReply(liveEmbed).catch(() => {
             // Clear interval if interaction was deleted or closed
             clearInterval(interval);
             if (activeQueue.lyricsInterval === interval) {
@@ -178,11 +171,9 @@ export default class LyricsCommand extends Command {
       return this.sendPlainLyrics(interaction, trackName, artistName, matchedTrack.plainLyrics || matchedTrack.syncedLyrics.replace(/\[.*?\]/g, ""));
     } catch (error) {
       logger.error("Error fetching lyrics:", error);
-      return interaction.editReply({
-        embeds: [
-          MusicEmbedBuilder.error("An error occurred while fetching the lyrics. Please try again later."),
-        ],
-      });
+      return interaction.editReply(
+        MusicEmbedBuilder.error("An error occurred while fetching the lyrics. Please try again later.")
+      );
     }
   }
 
@@ -269,11 +260,19 @@ export default class LyricsCommand extends Command {
     const elapsed = MusicEmbedBuilder.formatDuration(position);
     const duration = MusicEmbedBuilder.formatDuration(totalLength);
 
-    return MusicEmbedBuilder.base()
-      .setTitle(`🎤 Live Lyrics: ${trackName}`)
-      .setAuthor({ name: artistName })
-      .setDescription(displayLines.join("\n\n"))
-      .setFooter({ text: `Playing: ${trackName} | [${elapsed} / ${duration}]` });
+    const contentText =
+      `## 🎤 Live Lyrics: ${trackName}\n` +
+      `**Artist:** ${artistName}\n\n` +
+      `${displayLines.join("\n\n")}`;
+
+    return MusicEmbedBuilder.container(
+      [
+        MusicEmbedBuilder.text(contentText),
+        MusicEmbedBuilder.separator(),
+        MusicEmbedBuilder.text(`Playing: ${trackName} | [${elapsed} / ${duration}]`),
+      ],
+      0x5865f2
+    );
   }
 
   /**
@@ -281,33 +280,47 @@ export default class LyricsCommand extends Command {
    */
   private sendPlainLyrics(interaction: ChatInputCommandInteraction, trackName: string, artistName: string, lyrics: string) {
     let lyricsText = lyrics;
-    if (lyricsText.length > 4000) {
-      lyricsText = lyricsText.substring(0, 4000) + "\n\n*...lirik terpotong karena terlalu panjang*";
+    if (lyricsText.length > 3500) {
+      lyricsText = lyricsText.substring(0, 3500) + "\n\n*...lirik terpotong karena terlalu panjang*";
     }
 
-    const embed = MusicEmbedBuilder.base()
-      .setTitle(`🎤 Lyrics: ${trackName}`)
-      .setAuthor({ name: artistName })
-      .setDescription(lyricsText)
-      .setFooter({ text: "Lyrics powered by LRCLIB (Plain Mode)" });
+    const contentText =
+      `## 🎤 Lyrics: ${trackName}\n` +
+      `**Artist:** ${artistName}\n\n` +
+      `${lyricsText}`;
 
-    return interaction.editReply({ embeds: [embed] });
+    const payload = MusicEmbedBuilder.container(
+      [
+        MusicEmbedBuilder.text(contentText),
+        MusicEmbedBuilder.separator(),
+        MusicEmbedBuilder.text("Lyrics powered by LRCLIB (Plain Mode)"),
+      ],
+      0x5865f2
+    );
+
+    return interaction.editReply(payload);
   }
 
   /**
    * Send standard error embed for no lyrics found
    */
   private sendNoLyricsFound(interaction: ChatInputCommandInteraction, query: string) {
-    const errorEmbed = MusicEmbedBuilder.error(
-      `Could not find any lyrics for "${query}".`
-    ).setDescription(
+    const errorText =
       `**❌ No Lyrics Found**\n\n` +
       `Could not find any lyrics for "**${query}**".\n\n` +
       `*Tips: Jika kamu mengambil judul dari video YouTube, terkadang judulnya mengandung nama uploader atau tag video lainnya. Cobalah mengetik pencarian bersih secara manual dengan format:*\n` +
-      `\`/lyrics query: [Nama Artis] [Judul Lagu]\``
+      `\`/lyrics query: [Nama Artis] [Judul Lagu]\``;
+
+    const payload = MusicEmbedBuilder.container(
+      [
+        MusicEmbedBuilder.text(errorText),
+        MusicEmbedBuilder.separator(),
+        MusicEmbedBuilder.text("*elmusic | leon x music system*"),
+      ],
+      0xe74c3c
     );
 
-    return interaction.editReply({ embeds: [errorEmbed] });
+    return interaction.editReply(payload);
   }
 
   /**

@@ -27,7 +27,7 @@ export default class VolumeCommand extends Command {
 
     if (!voiceChannel) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("You must be in a voice channel to use this command.")],
+        ...MusicEmbedBuilder.error("You must be in a voice channel to use this command."),
         ephemeral: true,
       });
     }
@@ -35,7 +35,7 @@ export default class VolumeCommand extends Command {
     const queue = client.queues.get(interaction.guildId!);
     if (!queue || !queue.current) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("There is no music playing right now.")],
+        ...MusicEmbedBuilder.error("There is no music playing right now."),
         ephemeral: true,
       });
     }
@@ -43,7 +43,7 @@ export default class VolumeCommand extends Command {
     const selfMember = interaction.guild?.members.me;
     if (selfMember?.voice.channel && selfMember.voice.channel.id !== voiceChannel.id) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("You must be in the same voice channel as me to change volume.")],
+        ...MusicEmbedBuilder.error("You must be in the same voice channel as me to change volume."),
         ephemeral: true,
       });
     }
@@ -52,16 +52,16 @@ export default class VolumeCommand extends Command {
 
     if (level === null) {
       // If no level specified, show the current volume
-      return interaction.reply({
-        embeds: [MusicEmbedBuilder.success("Current Volume", `The current volume level is **${queue.player.volume}%**`)],
-      });
+      return interaction.reply(
+        MusicEmbedBuilder.success("Current Volume", `The current volume level is **${queue.player.volume}%**`)
+      );
     }
 
     // Change volume
     await queue.setVolume(level);
 
-    return interaction.reply({
-      embeds: [MusicEmbedBuilder.success("Volume Updated", `Volume has been set to **${level}%**`)],
-    });
+    return interaction.reply(
+      MusicEmbedBuilder.success("Volume Updated", `Volume has been set to **${level}%**`)
+    );
   }
 }

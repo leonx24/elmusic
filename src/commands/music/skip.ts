@@ -17,7 +17,7 @@ export default class SkipCommand extends Command {
 
     if (!voiceChannel) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("You must be in a voice channel to use this command.")],
+        ...MusicEmbedBuilder.error("You must be in a voice channel to use this command."),
         ephemeral: true,
       });
     }
@@ -25,7 +25,7 @@ export default class SkipCommand extends Command {
     const queue = client.queues.get(interaction.guildId!);
     if (!queue || !queue.current) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("There is no music playing right now.")],
+        ...MusicEmbedBuilder.error("There is no music playing right now."),
         ephemeral: true,
       });
     }
@@ -33,7 +33,7 @@ export default class SkipCommand extends Command {
     const selfMember = interaction.guild?.members.me;
     if (selfMember?.voice.channel && selfMember.voice.channel.id !== voiceChannel.id) {
       return interaction.reply({
-        embeds: [MusicEmbedBuilder.error("You must be in the same voice channel as me to skip.")],
+        ...MusicEmbedBuilder.error("You must be in the same voice channel as me to skip."),
         ephemeral: true,
       });
     }
@@ -41,8 +41,8 @@ export default class SkipCommand extends Command {
     const currentTitle = queue.current.info.title;
     await queue.skip();
 
-    return interaction.reply({
-      embeds: [MusicEmbedBuilder.success("Skipped", `Skipped the current track: **${currentTitle}**`)],
-    });
+    return interaction.reply(
+      MusicEmbedBuilder.success("Skipped", `Skipped the current track: **${currentTitle}**`)
+    );
   }
 }
