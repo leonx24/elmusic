@@ -6,8 +6,8 @@ server:
 
 lavalink:
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:02f536d9ac05b4bb0f91dedc19f964f30fc18559"
-      snapshot: true
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
+      snapshot: false
   server:
     password: "youshallnotpass"
     sources:
@@ -49,27 +49,10 @@ plugins:
       refreshToken: "${YOUTUBE_REFRESH_TOKEN:}"
       skipInitialization: false
     clients:
-      - TVHTML5
       - MUSIC
-      - IOS
       - ANDROID_MUSIC
       - WEB
-    clientOptions:
-      TVHTML5:
-        playback: true
-        videoLoading: true
-        searching: false
-        playlistLoading: true
-      IOS:
-        playback: true
-        videoLoading: true
-        searching: false
-        playlistLoading: true
-      MUSIC:
-        playback: false
-        videoLoading: false
-        searching: true
-        playlistLoading: true
+      - IOS
 
 logging:
   file:

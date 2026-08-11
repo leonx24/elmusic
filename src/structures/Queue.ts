@@ -159,9 +159,10 @@ export class Queue {
         const node = this.client.shoukaku.getIdealNode();
         if (node && searchQuery.length > 0) {
           logger.info(`Attempting stream fallback for "${searchQuery}"...`);
-          let res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
+          // Try SoundCloud first to bypass YouTube login/playback blocks
+          let res = await node.rest.resolve(`scsearch:${searchQuery}`);
           if (!res || !res.data || !Array.isArray(res.data) || res.data.length === 0) {
-            res = await node.rest.resolve(`scsearch:${searchQuery}`);
+            res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
           }
           if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
             const fallbackTrack = { ...res.data[0], requester: current.requester, _isFallback: true };
