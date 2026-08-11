@@ -245,9 +245,10 @@ export default class PlayCommand extends Command {
       const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 2000));
       
       const searchPromise = (async () => {
-        let res = await node.rest.resolve(`scsearch:${focusedValue}`);
+        // Try YouTube Music search first for official original track suggestions
+        let res = await node.rest.resolve(`ytmsearch:${focusedValue}`);
         if (!res || !res.data || !Array.isArray(res.data) || res.data.length === 0) {
-          res = await node.rest.resolve(`ytmsearch:${focusedValue}`);
+          res = await node.rest.resolve(`scsearch:${focusedValue}`);
         }
         return res;
       })();
@@ -258,7 +259,27 @@ export default class PlayCommand extends Command {
         return interaction.respond([]).catch(() => {});
       }
 
-      const choices = result.data.slice(0, 10).map((track: any) => {
+      let tracks = [...result.data];
+      const isUserSearchingCover = /cover|karaoke|tribute|remix|instrumental/i.test(focusedValue);
+
+      // Filter and rank original tracks above covers/tributes unless specifically requested
+      if (!isUserSearchingCover) {
+        tracks.sort((a: any, b: any) => {
+          const aTitle = a.info?.title || "";
+          const aAuthor = a.info?.author || "";
+          const bTitle = b.info?.title || "";
+          const bAuthor = b.info?.author || "";
+
+          const aIsCover = /cover|karaoke|tribute|remix|instrumental/i.test(aTitle) || /cover|karaoke|tribute/i.test(aAuthor);
+          const bIsCover = /cover|karaoke|tribute|remix|instrumental/i.test(bTitle) || /cover|karaoke|tribute/i.test(bAuthor);
+
+          if (aIsCover && !bIsCover) return 1;
+          if (!aIsCover && bIsCover) return -1;
+          return 0;
+        });
+      }
+
+      const choices = tracks.slice(0, 10).map((track: any) => {
         const title = track.info?.title || "Track";
         const author = track.info?.author || "";
         const label = author && author !== "Unknown Artist" ? `${title} - ${author}` : title;

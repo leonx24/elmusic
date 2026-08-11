@@ -79,11 +79,33 @@ export class Queue {
         // Shoukaku v4 setGlobalVolume changes player volume level (0 to 1000)
         await this.player.setGlobalVolume(level);
     }
+    playedHistory = new Set();
+    cleanTitle(title) {
+        return (title || "")
+            .toLowerCase()
+            .replace(/\(official\s*(music\s*)?video\)/gi, "")
+            .replace(/\(audio\)/gi, "")
+            .replace(/\(lyric\s*video\)/gi, "")
+            .replace(/\[.*?\]/g, "")
+            .replace(/\(.*?\)/g, "")
+            .trim();
+    }
     onTrackStart() {
         if (!this.current)
             return;
         const trackInfo = this.current.info;
         const requester = this.current.requester;
+        // Track played history to avoid looping in autoplay
+        if (trackInfo.identifier)
+            this.playedHistory.add(trackInfo.identifier);
+        const cleaned = this.cleanTitle(trackInfo.title);
+        if (cleaned)
+            this.playedHistory.add(cleaned);
+        if (this.playedHistory.size > 100) {
+            const firstKey = this.playedHistory.values().next().value;
+            if (firstKey)
+                this.playedHistory.delete(firstKey);
+        }
         this.updateVoiceChannelStatus(`${trackInfo.title} - ${trackInfo.author}`.substring(0, 50));
         this.textChannel.send(MusicEmbedBuilder.nowPlaying(trackInfo, requester, this.player.paused, this.autoplay)).catch(() => { });
     }
@@ -98,20 +120,52 @@ export class Queue {
                 this.tracks.push(this.current);
             }
         }
-        // Autoplay logic if queue is empty
-        if (this.tracks.length === 0 && this.autoplay && this.current) {
+        // Autoplay logic if queue is empty (YouTube/Spotify style continuous autoplay)
+        if (this.tracks.length === 0 && this.autoplay && this.current && this.loop === "none") {
             try {
-                const lastTitle = this.current.info.title;
-                const lastAuthor = this.current.info.author;
+                const lastTitle = this.current.info.title || "";
+                const lastAuthor = this.current.info.author || "";
+                const cleanedLastTitle = this.cleanTitle(lastTitle);
                 const node = this.client.shoukaku.getIdealNode();
                 if (node) {
-                    const res = await node.rest.resolve(`ytmsearch:${lastAuthor} - ${lastTitle} mix`);
-                    if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-                        const nextTrack = res.data.find((t) => t.info?.identifier !== this.current.info?.identifier) || res.data[0];
-                        if (nextTrack) {
-                            this.tracks.push({ ...nextTrack, requester: "Autoplay" });
-                            this.textChannel.send(MusicEmbedBuilder.success("Autoplay", `Autoplay queued next song: **[${nextTrack.info.title}](${nextTrack.info.uri || "#"})**`)).catch(() => { });
+                    // Search strategies for related/next songs
+                    const searchQueries = [
+                        `ytmsearch:${lastAuthor} top tracks`,
+                        `ytmsearch:${lastAuthor} songs`,
+                        `ytmsearch:${lastAuthor} radio`,
+                        `scsearch:${lastAuthor}`
+                    ];
+                    let nextTrack = null;
+                    for (const query of searchQueries) {
+                        const res = await node.rest.resolve(query);
+                        if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+                            // Find a candidate that is NOT the same song and HAS NOT been played recently
+                            const candidate = res.data.find((t) => {
+                                if (!t.info)
+                                    return false;
+                                const id = t.info.identifier;
+                                const title = t.info.title || "";
+                                const clean = this.cleanTitle(title);
+                                // Skip if already in history
+                                if (id && this.playedHistory.has(id))
+                                    return false;
+                                if (clean && this.playedHistory.has(clean))
+                                    return false;
+                                // Skip if title is practically identical to last title
+                                if (clean && cleanedLastTitle && (clean.includes(cleanedLastTitle) || cleanedLastTitle.includes(clean))) {
+                                    return false;
+                                }
+                                return true;
+                            });
+                            if (candidate) {
+                                nextTrack = candidate;
+                                break;
+                            }
                         }
+                    }
+                    if (nextTrack) {
+                        this.tracks.push({ ...nextTrack, requester: "Autoplay" });
+                        this.textChannel.send(MusicEmbedBuilder.success("Autoplay Next", `Playing next related song: **[${nextTrack.info.title}](${nextTrack.info.uri || "#"})** by **${nextTrack.info.author}**`)).catch(() => { });
                     }
                 }
             }
