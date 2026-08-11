@@ -47,7 +47,7 @@ plugins:
     oauth:
       enabled: true
       refreshToken: "${YOUTUBE_REFRESH_TOKEN:}"
-      skipInitialization: true
+      skipInitialization: false
     clients:
       - MUSIC
       - TVHTML5

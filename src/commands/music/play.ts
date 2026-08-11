@@ -132,14 +132,36 @@ export default class PlayCommand extends Command {
 
       // Fallback search logic if primary search encounters an error or returns empty
       if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
-        if (!/^(https?:\/\/)/.test(query)) {
-          // Try YouTube Music search fallback
-          result = await node.rest.resolve(`ytmsearch:${query}`);
+        let fallbackText = query;
 
-          // Try YouTube standard search fallback
-          if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
-            result = await node.rest.resolve(`ytsearch:${query}`);
+        // If query is a YouTube URL, extract title via YouTube public oEmbed endpoint
+        if (/https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(query)) {
+          try {
+            const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(query)}&format=json`);
+            if (oembedRes.ok) {
+              const oembedData = (await oembedRes.json()) as any;
+              if (oembedData.title) {
+                fallbackText = `${oembedData.author_name || ""} ${oembedData.title}`.trim();
+              }
+            }
+          } catch (err) {
+            logger.error(`Error resolving YouTube oEmbed for ${query}:`, err);
           }
+        }
+
+        const cleanSearch = fallbackText.replace(/https?:\/\/\S+/g, "").trim() || query;
+
+        // Try SoundCloud search fallback
+        result = await node.rest.resolve(`scsearch:${cleanSearch}`);
+
+        // Try YouTube Music search fallback
+        if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
+          result = await node.rest.resolve(`ytmsearch:${cleanSearch}`);
+        }
+
+        // Try YouTube standard search fallback
+        if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
+          result = await node.rest.resolve(`ytsearch:${cleanSearch}`);
         }
       }
 
