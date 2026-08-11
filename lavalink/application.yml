@@ -50,9 +50,9 @@ plugins:
       skipInitialization: false
     clients:
       - MUSIC
-      - TVHTML5
+      - TV
       - ANDROID_MUSIC
-      - WEB_EMBEDDED_PLAYER
+      - WEBEMBEDDED
       - ANDROID_VR
       - WEB
 
