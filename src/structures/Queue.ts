@@ -144,18 +144,21 @@ export class Queue {
   private async onPlayerError(error: any) {
     logger.error(`Lavalink Player error in guild ${this.guildId}:`, error);
 
-    // Automatic SoundCloud fallback for YouTube stream errors
+    // Automatic fallback for YouTube/SoundCloud stream errors
     if (this.current && !this.current._isFallback) {
       this.current._isFallback = true;
       try {
         let title = this.current.info?.title || "";
         let author = this.current.info?.author || "";
         if (author === "Unknown Artist") author = "";
-        const searchQuery = `${author} ${title}`.trim();
+        const searchQuery = `${author} ${title} audio`.trim();
         const node = this.client.shoukaku.getIdealNode();
         if (node && searchQuery.length > 0) {
-          logger.info(`Attempting SoundCloud stream fallback for "${searchQuery}"...`);
-          const res = await node.rest.resolve(`scsearch:${searchQuery}`);
+          logger.info(`Attempting stream fallback for "${searchQuery}"...`);
+          let res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
+          if (!res || !res.data || !Array.isArray(res.data) || res.data.length === 0) {
+            res = await node.rest.resolve(`scsearch:${searchQuery}`);
+          }
           if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
             const fallbackTrack = { ...res.data[0], requester: this.current.requester, _isFallback: true };
             this.current = fallbackTrack;
@@ -165,7 +168,7 @@ export class Queue {
           }
         }
       } catch (fallbackErr) {
-        logger.error(`SoundCloud fallback failed for guild ${this.guildId}:`, fallbackErr);
+        logger.error(`Stream fallback failed for guild ${this.guildId}:`, fallbackErr);
       }
     }
 
