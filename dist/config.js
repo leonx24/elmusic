@@ -20,4 +20,5 @@ export const config = {
         },
     ],
     embedColor: process.env.EMBED_COLOR || "#5865F2",
+    prefix: process.env.PREFIX || "!",
 };

@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename);
 
 export class BotClient extends Client {
   public commands = new Collection<string, Command>();
+  public aliases = new Collection<string, string>();
   public queues = new Collection<string, Queue>();
   public shoukaku: Shoukaku;
 
@@ -89,6 +90,11 @@ export class BotClient extends Client {
           if (CommandClass && typeof CommandClass === "function") {
             const cmd: Command = new (CommandClass as any)();
             this.commands.set(cmd.name, cmd);
+            if (cmd.aliases && Array.isArray(cmd.aliases)) {
+              for (const alias of cmd.aliases) {
+                this.aliases.set(alias.toLowerCase(), cmd.name);
+              }
+            }
             logger.info(`Loaded command: [${category}] /${cmd.name}`);
           }
         } catch (error) {

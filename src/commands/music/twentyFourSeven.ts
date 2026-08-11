@@ -8,6 +8,7 @@ export default class TwentyFourSevenCommand extends Command {
     super({
       name: "247",
       description: "Toggle 24/7 mode to keep the bot in the voice channel indefinitely",
+      aliases: ["24-7"],
     });
   }
 

@@ -11,6 +11,7 @@ export default class PlayCommand extends Command {
     super({
       name: "play",
       description: "Play music from YouTube/Spotify/SoundCloud in your voice channel",
+      aliases: ["p"],
       options: [
         {
           name: "query",

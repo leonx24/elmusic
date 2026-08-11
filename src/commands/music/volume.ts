@@ -8,6 +8,7 @@ export default class VolumeCommand extends Command {
     super({
       name: "volume",
       description: "Check or change the music playback volume",
+      aliases: ["vol", "v"],
       options: [
         {
           name: "level",

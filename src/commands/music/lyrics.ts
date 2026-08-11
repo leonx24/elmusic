@@ -15,6 +15,7 @@ export default class LyricsCommand extends Command {
     super({
       name: "lyrics",
       description: "Search for the lyrics of a song (runs live lyrics if playing)",
+      aliases: ["l"],
       options: [
         {
           name: "query",

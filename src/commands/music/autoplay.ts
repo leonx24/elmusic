@@ -8,6 +8,7 @@ export default class AutoplayCommand extends Command {
     super({
       name: "autoplay",
       description: "Toggle autoplay mode to automatically play related songs when queue is empty",
+      aliases: ["ap"],
     });
   }
 

@@ -4,17 +4,20 @@ import { BotClient } from "./BotClient.js";
 export interface CommandOptions {
   name: string;
   description: string;
+  aliases?: string[];
   options?: ApplicationCommandOptionData[];
 }
 
 export abstract class Command {
   public name: string;
   public description: string;
+  public aliases: string[];
   public options: ApplicationCommandOptionData[];
 
   constructor(options: CommandOptions) {
     this.name = options.name;
     this.description = options.description;
+    this.aliases = options.aliases || [];
     this.options = options.options || [];
   }
 

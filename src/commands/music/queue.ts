@@ -9,6 +9,7 @@ export default class QueueCommand extends Command {
     super({
       name: "queue",
       description: "Show the current playing song and the queue list",
+      aliases: ["q"],
     });
   }
 

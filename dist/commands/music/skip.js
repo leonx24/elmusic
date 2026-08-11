@@ -5,6 +5,7 @@ export default class SkipCommand extends Command {
         super({
             name: "skip",
             description: "Skip the current playing song",
+            aliases: ["s"],
         });
     }
     async run(client, interaction) {

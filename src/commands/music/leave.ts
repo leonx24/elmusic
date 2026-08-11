@@ -8,6 +8,7 @@ export default class LeaveCommand extends Command {
     super({
       name: "leave",
       description: "Disconnect the bot from the voice channel and clear the queue",
+      aliases: ["dc", "stop"],
     });
   }
 

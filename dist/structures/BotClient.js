@@ -9,6 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 export class BotClient extends Client {
     commands = new Collection();
+    aliases = new Collection();
     queues = new Collection();
     shoukaku;
     constructor(options) {
@@ -71,6 +72,11 @@ export class BotClient extends Client {
                     if (CommandClass && typeof CommandClass === "function") {
                         const cmd = new CommandClass();
                         this.commands.set(cmd.name, cmd);
+                        if (cmd.aliases && Array.isArray(cmd.aliases)) {
+                            for (const alias of cmd.aliases) {
+                                this.aliases.set(alias.toLowerCase(), cmd.name);
+                            }
+                        }
                         logger.info(`Loaded command: [${category}] /${cmd.name}`);
                     }
                 }
