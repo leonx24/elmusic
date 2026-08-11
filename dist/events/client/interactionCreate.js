@@ -23,7 +23,7 @@ export default class InteractionCreateEvent extends Event {
         const command = client.commands.get(interaction.commandName);
         if (!command) {
             return interaction.reply({
-                embeds: [MusicEmbedBuilder.error(`Command "/${interaction.commandName}" not found.`)],
+                ...MusicEmbedBuilder.error(`Command "/${interaction.commandName}" not found.`),
                 ephemeral: true,
             });
         }
@@ -33,12 +33,12 @@ export default class InteractionCreateEvent extends Event {
         }
         catch (error) {
             logger.error(`Error running command /${command.name}:`, error);
-            const errorEmbed = MusicEmbedBuilder.error("An unexpected error occurred while executing this command.");
+            const errorMsg = MusicEmbedBuilder.error("An unexpected error occurred while executing this command.");
             if (interaction.replied || interaction.deferred) {
-                await interaction.followUp({ embeds: [errorEmbed], ephemeral: true });
+                await interaction.followUp({ ...errorMsg, ephemeral: true });
             }
             else {
-                await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
+                await interaction.reply({ ...errorMsg, ephemeral: true });
             }
         }
     }

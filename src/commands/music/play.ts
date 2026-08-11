@@ -67,20 +67,33 @@ export default class PlayCommand extends Command {
 
       // Fallback search logic if primary search encounters an error or returns empty
       if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
-        if (!/^(https?:\/\/)/.test(query)) {
-          // Fallback 1: Standard YouTube Search
-          result = await node.rest.resolve(`ytsearch:${query}`);
+        let fallbackQuery = query;
 
-          // Fallback 2: SoundCloud Search
-          if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
-            result = await node.rest.resolve(`scsearch:${query}`);
-          }
+        // If query was a YouTube URL, attempt extracting video ID or video search fallback
+        const ytIdMatch = query.match(/(?:v=|\/v\/|embed\/|youtu\.be\/|\&v=)([^#\&\?]{11})/);
+        if (ytIdMatch && ytIdMatch[1]) {
+          fallbackQuery = `ytmsearch:${ytIdMatch[1]}`;
+        } else if (!/^(ytsearch:|ytmsearch:|scsearch:)/.test(query)) {
+          fallbackQuery = `ytmsearch:${query.replace(/https?:\/\/\S+/g, "").trim() || query}`;
+        }
+
+        // Try YouTube Music search fallback
+        result = await node.rest.resolve(fallbackQuery);
+
+        // Try YouTube standard search fallback
+        if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
+          result = await node.rest.resolve(`ytsearch:${query}`);
+        }
+
+        // Try SoundCloud search fallback
+        if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
+          result = await node.rest.resolve(`scsearch:${query}`);
         }
       }
 
-      if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0)) {
+      if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
         return interaction.editReply(
-          MusicEmbedBuilder.error("No results found for your query.")
+          MusicEmbedBuilder.error("Could not resolve or play this track from YouTube/SoundCloud. The source video may require login or age verification.")
         );
       }
 

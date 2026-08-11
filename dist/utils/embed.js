@@ -1,43 +1,83 @@
-import { EmbedBuilder } from "discord.js";
-import { config } from "../config.js";
-export class MusicEmbedBuilder {
+import { buildV2Container } from "./components-v2.js";
+export class MusicComponentBuilder {
+    static FLAGS = 32768; // MessageFlags.IsComponentsV2 (1 << 15)
     /**
-     * Create a base embed with theme color and default footer
+     * Helper to build container directly
      */
-    static base() {
-        return new EmbedBuilder()
-            .setColor(config.embedColor)
-            .setTimestamp()
-            .setFooter({ text: "elmusic | leon x music system" });
+    static container(children, accentColor) {
+        return {
+            flags: this.FLAGS,
+            components: [
+                {
+                    type: 17, // Container
+                    accent_color: accentColor ?? null,
+                    components: children,
+                },
+            ],
+        };
     }
     /**
-     * Success template
+     * TextDisplay component (Type 10)
+     */
+    static text(content) {
+        return {
+            type: 10,
+            content,
+        };
+    }
+    /**
+     * Separator component (Type 14)
+     */
+    static separator() {
+        return {
+            type: 14,
+            divider: true,
+            spacing: 1,
+        };
+    }
+    /**
+     * Success response template
      */
     static success(title, description) {
-        return this.base()
-            .setTitle(`✅ ${title}`)
-            .setDescription(description)
-            .setColor(0x2ecc71); // Green
+        return buildV2Container({
+            title: `✅ ${title}`,
+            description,
+            accentColor: 0x2ecc71, // Green
+            footer: "elmusic | leon x music system",
+        });
     }
     /**
-     * Error template
+     * Error response template
      */
     static error(description) {
-        return this.base()
-            .setTitle("❌ Error")
-            .setDescription(description)
-            .setColor(0xe74c3c); // Red
+        return buildV2Container({
+            title: "❌ Error",
+            description,
+            accentColor: 0xe74c3c, // Red
+            footer: "elmusic | leon x music system",
+        });
     }
     /**
-     * Now Playing / Track Start template (resembles Jockie Music details layout)
+     * Now Playing / Track Start template
      */
     static nowPlaying(track, requester) {
         const duration = this.formatDuration(track.length);
-        return this.base()
-            .setTitle("🎵 Now Playing")
-            .setDescription(`[${track.title}](${track.uri || "#"})`)
-            .addFields({ name: "Author", value: track.author, inline: true }, { name: "Duration", value: duration, inline: true }, { name: "Requested By", value: requester, inline: true })
-            .setThumbnail(`https://img.youtube.com/vi/${this.getYouTubeId(track.uri || "")}/hqdefault.jpg`);
+        const thumbnailId = this.getYouTubeId(track.uri || "");
+        const thumbnailUrl = thumbnailId ? `https://img.youtube.com/vi/${thumbnailId}/hqdefault.jpg` : undefined;
+        return buildV2Container({
+            title: "🎵 Now Playing",
+            description: `[**${track.title}**](${track.uri || "#"})`,
+            thumbnailUrl,
+            accentColor: 0x5865f2,
+            sections: [
+                {
+                    title: "📌 Song Information",
+                    content: `👤 **Author:** ${track.author}\n` +
+                        `⏱️ **Duration:** \`${duration}\` | 👤 **Requested By:** ${requester}`,
+                },
+            ],
+            footer: "elmusic | leon x music system",
+        });
     }
     /**
      * Helper to format millisecond duration into HH:MM:SS
@@ -62,3 +102,5 @@ export class MusicEmbedBuilder {
         return match && match[2].length === 11 ? match[2] : "";
     }
 }
+// Export backward compatible alias
+export const MusicEmbedBuilder = MusicComponentBuilder;

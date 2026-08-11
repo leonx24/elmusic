@@ -41,9 +41,7 @@ export class Queue {
         }
         if (this.tracks.length === 0) {
             this.current = null;
-            this.textChannel.send({
-                embeds: [MusicEmbedBuilder.success("Queue Finished", "No more tracks to play. Use `/leave` to disconnect me from the voice channel.")]
-            }).catch(() => { });
+            this.textChannel.send(MusicEmbedBuilder.success("Queue Finished", "No more tracks to play. Use `/leave` to disconnect me from the voice channel.")).catch(() => { });
             return;
         }
         this.current = this.tracks.shift();
@@ -53,18 +51,26 @@ export class Queue {
         }
         catch (error) {
             logger.error(`Error playing track in guild ${this.guildId}:`, error);
-            this.textChannel.send({
-                embeds: [MusicEmbedBuilder.error("Could not play the next track.")]
-            }).catch(() => { });
+            this.textChannel.send(MusicEmbedBuilder.error("Could not play the next track.")).catch(() => { });
             this.playNext();
         }
     }
-    skip() {
-        this.player.stopTrack();
+    async skip() {
+        try {
+            await this.player.stopTrack();
+        }
+        catch (error) {
+            logger.error(`Error skipping track in guild ${this.guildId}:`, error);
+        }
     }
-    stop() {
+    async stop() {
         this.tracks = [];
-        this.player.stopTrack();
+        try {
+            await this.player.stopTrack();
+        }
+        catch (error) {
+            logger.error(`Error stopping track in guild ${this.guildId}:`, error);
+        }
     }
     async setVolume(level) {
         // Shoukaku v4 setGlobalVolume changes player volume level (0 to 1000)
@@ -75,9 +81,7 @@ export class Queue {
             return;
         const trackInfo = this.current.info;
         const requester = this.current.requester;
-        this.textChannel.send({
-            embeds: [MusicEmbedBuilder.nowPlaying(trackInfo, requester)]
-        }).catch(() => { });
+        this.textChannel.send(MusicEmbedBuilder.nowPlaying(trackInfo, requester)).catch(() => { });
     }
     onTrackEnd(reason) {
         logger.info(`Track ended in guild ${this.guildId}. Reason: ${reason.reason}`);
@@ -94,9 +98,7 @@ export class Queue {
     }
     onPlayerError(error) {
         logger.error(`Lavalink Player error in guild ${this.guildId}:`, error);
-        this.textChannel.send({
-            embeds: [MusicEmbedBuilder.error("An error occurred with the Lavalink player.")]
-        }).catch(() => { });
+        this.textChannel.send(MusicEmbedBuilder.error("An error occurred with the Lavalink player.")).catch(() => { });
     }
     destroy() {
         if (this.lyricsInterval) {

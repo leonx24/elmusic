@@ -2,6 +2,7 @@ import { ChatInputCommandInteraction } from "discord.js";
 import { Command } from "../../structures/Command.js";
 import { BotClient } from "../../structures/BotClient.js";
 import { MusicEmbedBuilder } from "../../utils/embed.js";
+import { buildV2Container } from "../../utils/components-v2.js";
 
 export default class QueueCommand extends Command {
   constructor() {
@@ -43,21 +44,23 @@ export default class QueueCommand extends Command {
       }
     }
 
-    const contentText =
-      `## 🎶 Music Queue for ${interaction.guild?.name}\n\n` +
-      `${nowPlayingText}\n\n` +
-      `**Up Next:**\n${queueListText}\n\n` +
-      `📊 **Total Songs:** ${tracksList.length + 1} | 🔁 **Loop Mode:** ${queue.loop.toUpperCase()} | ⏰ **24/7:** ${queue.twentyFourSeven ? "ENABLED" : "DISABLED"}`;
-
-    const payload = MusicEmbedBuilder.container(
-      [
-        MusicEmbedBuilder.text(contentText),
-        MusicEmbedBuilder.separator(),
-        MusicEmbedBuilder.text("*elmusic | leon x music system*"),
-      ],
-      0x5865f2
+    return interaction.reply(
+      buildV2Container({
+        title: `🎶 Music Queue for ${interaction.guild?.name}`,
+        description: nowPlayingText,
+        accentColor: 0x5865f2,
+        sections: [
+          {
+            title: "📋 Up Next",
+            content: queueListText,
+          },
+          {
+            title: "📊 Status & Settings",
+            content: `• **Total Songs:** ${tracksList.length + 1}\n• **Loop Mode:** ${queue.loop.toUpperCase()}\n• **24/7 Standby:** ${queue.twentyFourSeven ? "ENABLED" : "DISABLED"}`,
+          },
+        ],
+        footer: "elmusic | leon x music system",
+      })
     );
-
-    return interaction.reply(payload);
   }
 }

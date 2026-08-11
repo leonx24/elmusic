@@ -2,6 +2,7 @@ import { ChatInputCommandInteraction, ApplicationCommandOptionType } from "disco
 import { Command } from "../../structures/Command.js";
 import { BotClient } from "../../structures/BotClient.js";
 import { MusicEmbedBuilder } from "../../utils/embed.js";
+import { buildV2Container } from "../../utils/components-v2.js";
 import { logger } from "../../utils/logger.js";
 
 interface LyricLine {
@@ -260,19 +261,12 @@ export default class LyricsCommand extends Command {
     const elapsed = MusicEmbedBuilder.formatDuration(position);
     const duration = MusicEmbedBuilder.formatDuration(totalLength);
 
-    const contentText =
-      `## 🎤 Live Lyrics: ${trackName}\n` +
-      `**Artist:** ${artistName}\n\n` +
-      `${displayLines.join("\n\n")}`;
-
-    return MusicEmbedBuilder.container(
-      [
-        MusicEmbedBuilder.text(contentText),
-        MusicEmbedBuilder.separator(),
-        MusicEmbedBuilder.text(`Playing: ${trackName} | [${elapsed} / ${duration}]`),
-      ],
-      0x5865f2
-    );
+    return buildV2Container({
+      title: `🎤 Live Lyrics: ${trackName}`,
+      description: `👤 **Artist:** ${artistName}\n\n${displayLines.join("\n\n")}`,
+      accentColor: 0x5865f2,
+      footer: `Playing: ${trackName} | [${elapsed} / ${duration}]`,
+    });
   }
 
   /**
@@ -284,43 +278,33 @@ export default class LyricsCommand extends Command {
       lyricsText = lyricsText.substring(0, 3500) + "\n\n*...lirik terpotong karena terlalu panjang*";
     }
 
-    const contentText =
-      `## 🎤 Lyrics: ${trackName}\n` +
-      `**Artist:** ${artistName}\n\n` +
-      `${lyricsText}`;
-
-    const payload = MusicEmbedBuilder.container(
-      [
-        MusicEmbedBuilder.text(contentText),
-        MusicEmbedBuilder.separator(),
-        MusicEmbedBuilder.text("Lyrics powered by LRCLIB (Plain Mode)"),
-      ],
-      0x5865f2
+    return interaction.editReply(
+      buildV2Container({
+        title: `🎤 Lyrics: ${trackName}`,
+        description: `👤 **Artist:** ${artistName}\n\n${lyricsText}`,
+        accentColor: 0x5865f2,
+        footer: "Lyrics powered by LRCLIB (Plain Mode)",
+      })
     );
-
-    return interaction.editReply(payload);
   }
 
   /**
    * Send standard error embed for no lyrics found
    */
   private sendNoLyricsFound(interaction: ChatInputCommandInteraction, query: string) {
-    const errorText =
-      `**❌ No Lyrics Found**\n\n` +
+    const tipsContent =
       `Could not find any lyrics for "**${query}**".\n\n` +
       `*Tips: Jika kamu mengambil judul dari video YouTube, terkadang judulnya mengandung nama uploader atau tag video lainnya. Cobalah mengetik pencarian bersih secara manual dengan format:*\n` +
       `\`/lyrics query: [Nama Artis] [Judul Lagu]\``;
 
-    const payload = MusicEmbedBuilder.container(
-      [
-        MusicEmbedBuilder.text(errorText),
-        MusicEmbedBuilder.separator(),
-        MusicEmbedBuilder.text("*elmusic | leon x music system*"),
-      ],
-      0xe74c3c
+    return interaction.editReply(
+      buildV2Container({
+        title: "❌ No Lyrics Found",
+        description: tipsContent,
+        accentColor: 0xe74c3c,
+        footer: "elmusic | leon x music system",
+      })
     );
-
-    return interaction.editReply(payload);
   }
 
   /**

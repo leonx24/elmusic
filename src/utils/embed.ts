@@ -1,23 +1,18 @@
-import { config } from "../config.js";
-
-export interface ComponentV2Message {
-  flags: number;
-  components: any[];
-}
+import { buildV2Container, V2ContainerParams } from "./components-v2.js";
 
 export class MusicComponentBuilder {
   public static readonly FLAGS = 32768; // MessageFlags.IsComponentsV2 (1 << 15)
 
   /**
-   * Helper to wrap child components into a Container (Type 17) payload
+   * Helper to build container directly
    */
-  public static container(children: any[], accentColor?: number): ComponentV2Message {
+  public static container(children: any[], accentColor?: number) {
     return {
       flags: this.FLAGS,
       components: [
         {
           type: 17, // Container
-          accent_color: accentColor,
+          accent_color: accentColor ?? null,
           components: children,
         },
       ],
@@ -37,38 +32,36 @@ export class MusicComponentBuilder {
   /**
    * Separator component (Type 14)
    */
-  public static separator(): { type: number } {
+  public static separator(): { type: number; divider: boolean; spacing: number } {
     return {
       type: 14,
+      divider: true,
+      spacing: 1,
     };
   }
 
   /**
    * Success response template
    */
-  public static success(title: string, description: string): ComponentV2Message {
-    return this.container(
-      [
-        this.text(`### ✅ ${title}\n${description}`),
-        this.separator(),
-        this.text(`*elmusic | leon x music system*`),
-      ],
-      0x2ecc71 // Green
-    );
+  public static success(title: string, description: string) {
+    return buildV2Container({
+      title: `✅ ${title}`,
+      description,
+      accentColor: 0x2ecc71, // Green
+      footer: "elmusic | leon x music system",
+    });
   }
 
   /**
    * Error response template
    */
-  public static error(description: string): ComponentV2Message {
-    return this.container(
-      [
-        this.text(`### ❌ Error\n${description}`),
-        this.separator(),
-        this.text(`*elmusic | leon x music system*`),
-      ],
-      0xe74c3c // Red
-    );
+  public static error(description: string) {
+    return buildV2Container({
+      title: "❌ Error",
+      description,
+      accentColor: 0xe74c3c, // Red
+      footer: "elmusic | leon x music system",
+    });
   }
 
   /**
@@ -77,36 +70,26 @@ export class MusicComponentBuilder {
   public static nowPlaying(
     track: { title: string; uri?: string; author: string; length: number },
     requester: string
-  ): ComponentV2Message {
+  ) {
     const duration = this.formatDuration(track.length);
     const thumbnailId = this.getYouTubeId(track.uri || "");
+    const thumbnailUrl = thumbnailId ? `https://img.youtube.com/vi/${thumbnailId}/hqdefault.jpg` : undefined;
 
-    const contentText =
-      `## 🎵 Now Playing\n` +
-      `[**${track.title}**](${track.uri || "#"})\n\n` +
-      `👤 **Author:** ${track.author}\n` +
-      `⏱️ **Duration:** \`${duration}\` | 👤 **Requested By:** ${requester}`;
-
-    const children: any[] = [this.text(contentText)];
-
-    if (thumbnailId) {
-      children.push(this.separator());
-      children.push({
-        type: 9, // Section
-        components: [
-          this.text(`*elmusic | leon x music system*`),
-        ],
-        accessory: {
-          type: 11, // Thumbnail
-          url: `https://img.youtube.com/vi/${thumbnailId}/hqdefault.jpg`,
+    return buildV2Container({
+      title: "🎵 Now Playing",
+      description: `[**${track.title}**](${track.uri || "#"})`,
+      thumbnailUrl,
+      accentColor: 0x5865f2,
+      sections: [
+        {
+          title: "📌 Song Information",
+          content:
+            `👤 **Author:** ${track.author}\n` +
+            `⏱️ **Duration:** \`${duration}\` | 👤 **Requested By:** ${requester}`,
         },
-      });
-    } else {
-      children.push(this.separator());
-      children.push(this.text(`*elmusic | leon x music system*`));
-    }
-
-    return this.container(children, 0x5865f2);
+      ],
+      footer: "elmusic | leon x music system",
+    });
   }
 
   /**
@@ -136,4 +119,5 @@ export class MusicComponentBuilder {
 
 // Export backward compatible alias
 export const MusicEmbedBuilder = MusicComponentBuilder;
+
 
