@@ -50,9 +50,26 @@ plugins:
       skipInitialization: false
     clients:
       - MUSIC
+      - IOS
+      - ANDROID
       - ANDROID_MUSIC
       - WEB
-      - ANDROID_VR
+    clientOptions:
+      IOS:
+        playback: true
+        videoLoading: true
+        searching: false
+        playlistLoading: true
+      ANDROID:
+        playback: true
+        videoLoading: true
+        searching: false
+        playlistLoading: true
+      MUSIC:
+        playback: false
+        videoLoading: false
+        searching: true
+        playlistLoading: true
 
 logging:
   file:
