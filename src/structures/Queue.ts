@@ -91,6 +91,9 @@ export class Queue {
   }
 
   public playedHistory: Set<string> = new Set();
+  public playedAuthors: Set<string> = new Set();
+  private autoplayFailures = 0;
+  private lastAutoplayTime = 0;
 
   private cleanTitle(title: string): string {
     return (title || "")
@@ -100,6 +103,16 @@ export class Queue {
       .replace(/\(lyric\s*video\)/gi, "")
       .replace(/\[.*?\]/g, "")
       .replace(/\(.*?\)/g, "")
+      .trim();
+  }
+
+  private cleanAuthor(author: string): string {
+    return (author || "")
+      .toLowerCase()
+      .replace(/\s*-\s*topic$/i, "")
+      .replace(/\s*vevo$/i, "")
+      .replace(/official/i, "")
+      .replace(/records/i, "")
       .trim();
   }
 
@@ -117,6 +130,13 @@ export class Queue {
       const firstKey = this.playedHistory.values().next().value;
       if (firstKey) this.playedHistory.delete(firstKey);
     }
+
+    const cleanedAuthor = this.cleanAuthor(trackInfo.author);
+    if (cleanedAuthor) this.playedAuthors.add(cleanedAuthor);
+    if (this.playedAuthors.size > 50) {
+      const firstAuthor = this.playedAuthors.values().next().value;
+      if (firstAuthor) this.playedAuthors.delete(firstAuthor);
+    }
     
     this.updateVoiceChannelStatus(`${trackInfo.title} - ${trackInfo.author}`.substring(0, 50));
 
@@ -126,8 +146,14 @@ export class Queue {
   }
 
   private async onTrackEnd(reason: any) {
-    logger.info(`Track ended in guild ${this.guildId}. Reason: ${reason.reason}`);
+    const endReason = typeof reason === "string" ? reason : reason?.reason;
+    logger.info(`Track ended in guild ${this.guildId}. Reason: ${endReason}`);
     
+    // Ignore end event if track was replaced by another track or connection was cleaned up
+    if (endReason === "replaced" || endReason === "cleanup") {
+      return;
+    }
+
     // Handle loop status
     if (this.current) {
       if (this.loop === "track") {
@@ -140,38 +166,71 @@ export class Queue {
     // Autoplay logic if queue is empty (YouTube/Spotify style continuous autoplay)
     if (this.tracks.length === 0 && this.autoplay && this.current && this.loop === "none") {
       try {
+        const now = Date.now();
+        if (now - this.lastAutoplayTime < 10000) {
+          this.autoplayFailures++;
+        } else {
+          this.autoplayFailures = 0;
+        }
+        this.lastAutoplayTime = now;
+
+        if (this.autoplayFailures >= 3) {
+          logger.warn(`Autoplay halted due to rapid successive track ends in guild ${this.guildId}`);
+          this.autoplay = false;
+          this.autoplayFailures = 0;
+          this.textChannel.send(
+            MusicEmbedBuilder.error("Autoplay paused because tracks ended too quickly. Use `/autoplay` to re-enable.")
+          ).catch(() => {});
+          this.playNext();
+          return;
+        }
+
         const lastTitle = this.current.info.title || "";
         const lastAuthor = this.current.info.author || "";
         const cleanedLastTitle = this.cleanTitle(lastTitle);
+        const cleanedLastAuthor = this.cleanAuthor(lastAuthor);
         const node = this.client.shoukaku.getIdealNode();
 
         if (node) {
-          // Search strategies for related/next songs
+          // Search strategies for related songs (mix/radio to find similar songs by DIFFERENT artists)
           const searchQueries = [
-            `ytmsearch:${lastAuthor} top tracks`,
-            `ytmsearch:${lastAuthor} songs`,
-            `ytmsearch:${lastAuthor} radio`,
-            `scsearch:${lastAuthor}`
+            `ytmsearch:${cleanedLastTitle} mix`,
+            `ytmsearch:${cleanedLastTitle} radio`,
+            `ytmsearch:${cleanedLastAuthor} radio`,
+            `scsearch:${cleanedLastTitle} mix`,
+            `ytmsearch:${cleanedLastTitle}`
           ];
 
           let nextTrack: any = null;
 
+          // First pass: Find a song by a DIFFERENT artist that hasn't been played recently
           for (const query of searchQueries) {
             const res = await node.rest.resolve(query);
             if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-              // Find a candidate that is NOT the same song and HAS NOT been played recently
               const candidate = res.data.find((t: any) => {
                 if (!t.info) return false;
                 const id = t.info.identifier;
                 const title = t.info.title || "";
+                const author = t.info.author || "";
                 const clean = this.cleanTitle(title);
+                const cleanAuthor = this.cleanAuthor(author);
 
-                // Skip if already in history
+                // Skip if track or title already in history
                 if (id && this.playedHistory.has(id)) return false;
                 if (clean && this.playedHistory.has(clean)) return false;
 
                 // Skip if title is practically identical to last title
                 if (clean && cleanedLastTitle && (clean.includes(cleanedLastTitle) || cleanedLastTitle.includes(clean))) {
+                  return false;
+                }
+
+                // DIVERSE ARTIST CHECK: Skip if candidate is by the same author
+                if (cleanedLastAuthor && cleanAuthor && (cleanAuthor.includes(cleanedLastAuthor) || cleanedLastAuthor.includes(cleanAuthor))) {
+                  return false;
+                }
+
+                // Prefer artists not recently played
+                if (cleanAuthor && this.playedAuthors.has(cleanAuthor)) {
                   return false;
                 }
 
@@ -181,6 +240,35 @@ export class Queue {
               if (candidate) {
                 nextTrack = candidate;
                 break;
+              }
+            }
+          }
+
+          // Second pass fallback: If strict artist diversity didn't find a candidate, allow non-recent author but still exclude exact same author
+          if (!nextTrack) {
+            for (const query of searchQueries) {
+              const res = await node.rest.resolve(query);
+              if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+                const candidate = res.data.find((t: any) => {
+                  if (!t.info) return false;
+                  const id = t.info.identifier;
+                  const title = t.info.title || "";
+                  const author = t.info.author || "";
+                  const clean = this.cleanTitle(title);
+                  const cleanAuthor = this.cleanAuthor(author);
+
+                  if (id && this.playedHistory.has(id)) return false;
+                  if (clean && this.playedHistory.has(clean)) return false;
+                  if (cleanedLastAuthor && cleanAuthor && (cleanAuthor.includes(cleanedLastAuthor) || cleanedLastAuthor.includes(cleanAuthor))) {
+                    return false;
+                  }
+                  return true;
+                });
+
+                if (candidate) {
+                  nextTrack = candidate;
+                  break;
+                }
               }
             }
           }

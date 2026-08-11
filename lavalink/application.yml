@@ -6,7 +6,7 @@ server:
 
 lavalink:
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.7"
       snapshot: false
   server:
     password: "youshallnotpass"
@@ -32,7 +32,7 @@ lavalink:
     bufferDurationMs: 400
     frameBufferDurationMs: 5000
     opusEncodingIntervalMs: 20
-    youtubePlaylistLoadLimit: 6
+    youtubePlaylistLoadLimit: 100
     playerUpdateInterval: 5
     youtubeSearchEnabled: true
     soundcloudSearchEnabled: true
@@ -51,10 +51,11 @@ plugins:
       refreshToken: "${YOUTUBE_REFRESH_TOKEN:}"
       skipInitialization: false
     clients:
-      - TV
       - MUSIC
-      - ANDROID_MUSIC
       - WEB
+      - ANDROID_TESTSUITE
+      - TVHTML5EMBEDDED
+      - IOS
 
 logging:
   file:
