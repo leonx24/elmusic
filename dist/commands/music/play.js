@@ -94,10 +94,24 @@ export default class PlayCommand extends Command {
                 return interaction.editReply(MusicEmbedBuilder.success("Spotify Track Added", `Enqueued Spotify track: **${spotifyData.name}**.`));
             }
         }
-        // Determine initial search query (use ytmsearch with OAuth TV/WEB client)
-        const searchQuery = /^(https?:\/\/|ytsearch:|ytmsearch:|scsearch:)/.test(query)
+        // Determine initial search query
+        let searchQuery = /^(https?:\/\/|ytsearch:|ytmsearch:|scsearch:)/.test(query)
             ? query
             : `ytmsearch:${query}`;
+        // If query contains a YouTube playlist parameter list=, prioritize resolving as playlist
+        const listMatch = query.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+        if (listMatch && listMatch[1] && !query.includes("playlist?list=")) {
+            const directPlaylistUrl = `https://www.youtube.com/playlist?list=${listMatch[1]}`;
+            try {
+                const plRes = await node.rest.resolve(directPlaylistUrl);
+                if (plRes && plRes.loadType === "playlist") {
+                    searchQuery = directPlaylistUrl;
+                }
+            }
+            catch (e) {
+                // Fallback to original search query if direct playlist resolve fails
+            }
+        }
         try {
             let result = await node.rest.resolve(searchQuery);
             // Fallback search logic if primary search encounters an error or returns empty
@@ -127,7 +141,7 @@ export default class PlayCommand extends Command {
                 }
             }
             if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
-                return interaction.editReply(MusicEmbedBuilder.error("Could not resolve or play this track from YouTube/SoundCloud. The source video may require login or age verification."));
+                return interaction.editReply(MusicEmbedBuilder.error("Could not resolve or play this track from YouTube/SoundCloud. The source video or playlist may require login or age verification."));
             }
             const { loadType, data } = result;
             // Get or create queue
@@ -143,12 +157,18 @@ export default class PlayCommand extends Command {
                 client.queues.set(interaction.guildId, queue);
             }
             if (loadType === "playlist") {
-                const playlist = data; // Shoukaku Playlist data
-                const tracks = playlist.tracks;
+                const playlist = data;
+                const tracks = Array.isArray(playlist.tracks)
+                    ? playlist.tracks
+                    : (Array.isArray(playlist.data) ? playlist.data : (Array.isArray(playlist) ? playlist : []));
+                const playlistName = playlist.info?.name || playlist.name || "YouTube Playlist";
+                if (tracks.length === 0) {
+                    return interaction.editReply(MusicEmbedBuilder.error("The playlist is empty or could not be loaded."));
+                }
                 for (const track of tracks) {
                     queue.addTrack(track, interaction.user.tag);
                 }
-                return interaction.editReply(MusicEmbedBuilder.success("Playlist Added", `Added **${tracks.length}** tracks from playlist **${playlist.info.name}** to the queue.`));
+                return interaction.editReply(MusicEmbedBuilder.success("Playlist Added", `Added **${tracks.length}** tracks from playlist **${playlistName}** to the queue.`));
             }
             else if (loadType === "search" || loadType === "track") {
                 const tracks = Array.isArray(data) ? data : [data];

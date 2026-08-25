@@ -15,6 +15,8 @@ export class Queue {
   public twentyFourSeven = false;
   public autoplay = false;
   public lyricsInterval: NodeJS.Timeout | null = null;
+  public idleTimeout: NodeJS.Timeout | null = null;
+  private isSkipping = false;
 
   constructor(client: BotClient, player: Player, guildId: string, textChannel: GuildTextBasedChannel) {
     this.client = client;
@@ -37,6 +39,7 @@ export class Queue {
   }
 
   public addTrack(track: any, requester: string) {
+    this.clearIdleTimer();
     const trackWithRequester = { ...track, requester };
     this.tracks.push(trackWithRequester);
     if (!this.current) {
@@ -53,10 +56,20 @@ export class Queue {
     if (this.tracks.length === 0) {
       this.current = null;
       this.updateVoiceChannelStatus("");
-      this.textChannel.send(MusicEmbedBuilder.success("Queue Finished", "No more tracks to play. Use `/leave` to disconnect me from the voice channel.")).catch(() => {});
+      
+      const finishedMsg = this.twentyFourSeven
+        ? "No more tracks to play. 24/7 Standby mode is ON."
+        : "No more tracks to play. I will automatically leave the voice channel in 2 minutes if no new songs are queued.";
+
+      this.textChannel.send(MusicEmbedBuilder.success("Queue Finished", finishedMsg)).catch(() => {});
+
+      if (!this.twentyFourSeven) {
+        this.startIdleTimer();
+      }
       return;
     }
 
+    this.clearIdleTimer();
     this.current = this.tracks.shift();
     try {
       const encodedTrack = this.current.encoded || this.current.track;
@@ -69,9 +82,11 @@ export class Queue {
   }
 
   public async skip() {
+    this.isSkipping = true;
     try {
       await this.player.stopTrack();
     } catch (error) {
+      this.isSkipping = false;
       logger.error(`Error skipping track in guild ${this.guildId}:`, error);
     }
   }
@@ -103,6 +118,10 @@ export class Queue {
       .replace(/\(lyric\s*video\)/gi, "")
       .replace(/\[.*?\]/g, "")
       .replace(/\(.*?\)/g, "")
+      .replace(/\b\d+\s*hours?\s*(of)?\b/gi, "")
+      .replace(/\bdeep\s*sleep\b/gi, "")
+      .replace(/\bstudy\s*session\b/gi, "")
+      .replace(/\|.*/g, "")
       .trim();
   }
 
@@ -149,13 +168,16 @@ export class Queue {
     const endReason = (typeof reason === "string" ? reason : reason?.reason || "").toLowerCase();
     logger.info(`Track ended in guild ${this.guildId}. Reason: ${endReason}`);
     
+    const wasSkipping = this.isSkipping;
+    this.isSkipping = false;
+
     // Ignore end event if track was replaced, cleaned up, or failed (loadFailed is handled by onPlayerError)
     if (endReason === "replaced" || endReason === "cleanup" || endReason === "loadfailed" || endReason === "failed") {
       return;
     }
 
-    // Handle loop status
-    if (this.current) {
+    // Handle loop status (skip bypasses track loop)
+    if (this.current && !wasSkipping) {
       if (this.loop === "track") {
         this.tracks.unshift(this.current);
       } else if (this.loop === "queue") {
@@ -301,11 +323,15 @@ export class Queue {
       try {
         let title = current.info?.title || "";
         let author = current.info?.author || "";
-        if (author === "Unknown Artist") author = "";
-        const searchQuery = `${author} ${title}`.trim();
+        if (author === "Unknown Artist" || author === "Spotify") author = "";
+        
+        const cleanTitleText = this.cleanTitle(title);
+        const searchQuery = `${author} ${cleanTitleText}`.trim() || title;
         const node = this.client.shoukaku.getIdealNode();
+        
         if (node && searchQuery.length > 0) {
           logger.info(`Attempting stream fallback for "${searchQuery}"...`);
+          // Try SoundCloud first for 100% reliable streams on datacenter IPs
           let res = await node.rest.resolve(`scsearch:${searchQuery}`);
           if (!res || !res.data || !Array.isArray(res.data) || res.data.length === 0) {
             res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
@@ -330,6 +356,26 @@ export class Queue {
     this.playNext();
   }
 
+  public startIdleTimer() {
+    this.clearIdleTimer();
+    this.idleTimeout = setTimeout(() => {
+      if (this.tracks.length === 0 && !this.current && !this.twentyFourSeven) {
+        logger.info(`Idle timeout expired in guild ${this.guildId}. Leaving voice channel.`);
+        this.textChannel.send(
+          MusicEmbedBuilder.success("Disconnected", "Left the voice channel due to 2 minutes of inactivity. Use `/play` to play again!")
+        ).catch(() => {});
+        this.destroy();
+      }
+    }, 120000); // 2 minutes
+  }
+
+  public clearIdleTimer() {
+    if (this.idleTimeout) {
+      clearTimeout(this.idleTimeout);
+      this.idleTimeout = null;
+    }
+  }
+
   private async updateVoiceChannelStatus(statusText: string) {
     try {
       const guild = this.client.guilds.cache.get(this.guildId);
@@ -345,6 +391,7 @@ export class Queue {
   }
 
   public destroy() {
+    this.clearIdleTimer();
     if (this.lyricsInterval) {
       clearInterval(this.lyricsInterval);
       this.lyricsInterval = null;

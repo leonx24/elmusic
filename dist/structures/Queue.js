@@ -12,6 +12,8 @@ export class Queue {
     twentyFourSeven = false;
     autoplay = false;
     lyricsInterval = null;
+    idleTimeout = null;
+    isSkipping = false;
     constructor(client, player, guildId, textChannel) {
         this.client = client;
         this.player = player;
@@ -30,6 +32,7 @@ export class Queue {
         });
     }
     addTrack(track, requester) {
+        this.clearIdleTimer();
         const trackWithRequester = { ...track, requester };
         this.tracks.push(trackWithRequester);
         if (!this.current) {
@@ -44,9 +47,16 @@ export class Queue {
         if (this.tracks.length === 0) {
             this.current = null;
             this.updateVoiceChannelStatus("");
-            this.textChannel.send(MusicEmbedBuilder.success("Queue Finished", "No more tracks to play. Use `/leave` to disconnect me from the voice channel.")).catch(() => { });
+            const finishedMsg = this.twentyFourSeven
+                ? "No more tracks to play. 24/7 Standby mode is ON."
+                : "No more tracks to play. I will automatically leave the voice channel in 2 minutes if no new songs are queued.";
+            this.textChannel.send(MusicEmbedBuilder.success("Queue Finished", finishedMsg)).catch(() => { });
+            if (!this.twentyFourSeven) {
+                this.startIdleTimer();
+            }
             return;
         }
+        this.clearIdleTimer();
         this.current = this.tracks.shift();
         try {
             const encodedTrack = this.current.encoded || this.current.track;
@@ -59,10 +69,12 @@ export class Queue {
         }
     }
     async skip() {
+        this.isSkipping = true;
         try {
             await this.player.stopTrack();
         }
         catch (error) {
+            this.isSkipping = false;
             logger.error(`Error skipping track in guild ${this.guildId}:`, error);
         }
     }
@@ -80,6 +92,9 @@ export class Queue {
         await this.player.setGlobalVolume(level);
     }
     playedHistory = new Set();
+    playedAuthors = new Set();
+    autoplayFailures = 0;
+    lastAutoplayTime = 0;
     cleanTitle(title) {
         return (title || "")
             .toLowerCase()
@@ -88,6 +103,19 @@ export class Queue {
             .replace(/\(lyric\s*video\)/gi, "")
             .replace(/\[.*?\]/g, "")
             .replace(/\(.*?\)/g, "")
+            .replace(/\b\d+\s*hours?\s*(of)?\b/gi, "")
+            .replace(/\bdeep\s*sleep\b/gi, "")
+            .replace(/\bstudy\s*session\b/gi, "")
+            .replace(/\|.*/g, "")
+            .trim();
+    }
+    cleanAuthor(author) {
+        return (author || "")
+            .toLowerCase()
+            .replace(/\s*-\s*topic$/i, "")
+            .replace(/\s*vevo$/i, "")
+            .replace(/official/i, "")
+            .replace(/records/i, "")
             .trim();
     }
     onTrackStart() {
@@ -106,13 +134,28 @@ export class Queue {
             if (firstKey)
                 this.playedHistory.delete(firstKey);
         }
+        const cleanedAuthor = this.cleanAuthor(trackInfo.author);
+        if (cleanedAuthor)
+            this.playedAuthors.add(cleanedAuthor);
+        if (this.playedAuthors.size > 50) {
+            const firstAuthor = this.playedAuthors.values().next().value;
+            if (firstAuthor)
+                this.playedAuthors.delete(firstAuthor);
+        }
         this.updateVoiceChannelStatus(`${trackInfo.title} - ${trackInfo.author}`.substring(0, 50));
         this.textChannel.send(MusicEmbedBuilder.nowPlaying(trackInfo, requester, this.player.paused, this.autoplay)).catch(() => { });
     }
     async onTrackEnd(reason) {
-        logger.info(`Track ended in guild ${this.guildId}. Reason: ${reason.reason}`);
-        // Handle loop status
-        if (this.current) {
+        const endReason = (typeof reason === "string" ? reason : reason?.reason || "").toLowerCase();
+        logger.info(`Track ended in guild ${this.guildId}. Reason: ${endReason}`);
+        const wasSkipping = this.isSkipping;
+        this.isSkipping = false;
+        // Ignore end event if track was replaced, cleaned up, or failed (loadFailed is handled by onPlayerError)
+        if (endReason === "replaced" || endReason === "cleanup" || endReason === "loadfailed" || endReason === "failed") {
+            return;
+        }
+        // Handle loop status (skip bypasses track loop)
+        if (this.current && !wasSkipping) {
             if (this.loop === "track") {
                 this.tracks.unshift(this.current);
             }
@@ -123,30 +166,50 @@ export class Queue {
         // Autoplay logic if queue is empty (YouTube/Spotify style continuous autoplay)
         if (this.tracks.length === 0 && this.autoplay && this.current && this.loop === "none") {
             try {
+                const now = Date.now();
+                if (now - this.lastAutoplayTime < 10000) {
+                    this.autoplayFailures++;
+                }
+                else {
+                    this.autoplayFailures = 0;
+                }
+                this.lastAutoplayTime = now;
+                if (this.autoplayFailures >= 3) {
+                    logger.warn(`Autoplay halted due to rapid successive track ends in guild ${this.guildId}`);
+                    this.autoplay = false;
+                    this.autoplayFailures = 0;
+                    this.textChannel.send(MusicEmbedBuilder.error("Autoplay paused because tracks ended too quickly. Use `/autoplay` to re-enable.")).catch(() => { });
+                    this.playNext();
+                    return;
+                }
                 const lastTitle = this.current.info.title || "";
                 const lastAuthor = this.current.info.author || "";
                 const cleanedLastTitle = this.cleanTitle(lastTitle);
+                const cleanedLastAuthor = this.cleanAuthor(lastAuthor);
                 const node = this.client.shoukaku.getIdealNode();
                 if (node) {
-                    // Search strategies for related/next songs
+                    // Search strategies for related songs (mix/radio to find similar songs by DIFFERENT artists)
                     const searchQueries = [
-                        `ytmsearch:${lastAuthor} top tracks`,
-                        `ytmsearch:${lastAuthor} songs`,
-                        `ytmsearch:${lastAuthor} radio`,
-                        `scsearch:${lastAuthor}`
+                        `ytmsearch:${cleanedLastTitle} mix`,
+                        `ytmsearch:${cleanedLastTitle} radio`,
+                        `ytmsearch:${cleanedLastAuthor} radio`,
+                        `scsearch:${cleanedLastTitle} mix`,
+                        `ytmsearch:${cleanedLastTitle}`
                     ];
                     let nextTrack = null;
+                    // First pass: Find a song by a DIFFERENT artist that hasn't been played recently
                     for (const query of searchQueries) {
                         const res = await node.rest.resolve(query);
                         if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-                            // Find a candidate that is NOT the same song and HAS NOT been played recently
                             const candidate = res.data.find((t) => {
                                 if (!t.info)
                                     return false;
                                 const id = t.info.identifier;
                                 const title = t.info.title || "";
+                                const author = t.info.author || "";
                                 const clean = this.cleanTitle(title);
-                                // Skip if already in history
+                                const cleanAuthor = this.cleanAuthor(author);
+                                // Skip if track or title already in history
                                 if (id && this.playedHistory.has(id))
                                     return false;
                                 if (clean && this.playedHistory.has(clean))
@@ -155,11 +218,48 @@ export class Queue {
                                 if (clean && cleanedLastTitle && (clean.includes(cleanedLastTitle) || cleanedLastTitle.includes(clean))) {
                                     return false;
                                 }
+                                // DIVERSE ARTIST CHECK: Skip if candidate is by the same author
+                                if (cleanedLastAuthor && cleanAuthor && (cleanAuthor.includes(cleanedLastAuthor) || cleanedLastAuthor.includes(cleanAuthor))) {
+                                    return false;
+                                }
+                                // Prefer artists not recently played
+                                if (cleanAuthor && this.playedAuthors.has(cleanAuthor)) {
+                                    return false;
+                                }
                                 return true;
                             });
                             if (candidate) {
                                 nextTrack = candidate;
                                 break;
+                            }
+                        }
+                    }
+                    // Second pass fallback: If strict artist diversity didn't find a candidate, allow non-recent author but still exclude exact same author
+                    if (!nextTrack) {
+                        for (const query of searchQueries) {
+                            const res = await node.rest.resolve(query);
+                            if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
+                                const candidate = res.data.find((t) => {
+                                    if (!t.info)
+                                        return false;
+                                    const id = t.info.identifier;
+                                    const title = t.info.title || "";
+                                    const author = t.info.author || "";
+                                    const clean = this.cleanTitle(title);
+                                    const cleanAuthor = this.cleanAuthor(author);
+                                    if (id && this.playedHistory.has(id))
+                                        return false;
+                                    if (clean && this.playedHistory.has(clean))
+                                        return false;
+                                    if (cleanedLastAuthor && cleanAuthor && (cleanAuthor.includes(cleanedLastAuthor) || cleanedLastAuthor.includes(cleanAuthor))) {
+                                        return false;
+                                    }
+                                    return true;
+                                });
+                                if (candidate) {
+                                    nextTrack = candidate;
+                                    break;
+                                }
                             }
                         }
                     }
@@ -187,22 +287,27 @@ export class Queue {
             try {
                 let title = current.info?.title || "";
                 let author = current.info?.author || "";
-                if (author === "Unknown Artist")
+                if (author === "Unknown Artist" || author === "Spotify")
                     author = "";
-                const searchQuery = `${author} ${title} audio`.trim();
+                const cleanTitleText = this.cleanTitle(title);
+                const searchQuery = `${author} ${cleanTitleText}`.trim() || title;
                 const node = this.client.shoukaku.getIdealNode();
                 if (node && searchQuery.length > 0) {
                     logger.info(`Attempting stream fallback for "${searchQuery}"...`);
-                    let res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
+                    // Try SoundCloud first for 100% reliable streams on datacenter IPs
+                    let res = await node.rest.resolve(`scsearch:${searchQuery}`);
                     if (!res || !res.data || !Array.isArray(res.data) || res.data.length === 0) {
-                        res = await node.rest.resolve(`scsearch:${searchQuery}`);
+                        res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
                     }
                     if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
-                        const fallbackTrack = { ...res.data[0], requester: current.requester, _isFallback: true };
-                        this.current = fallbackTrack;
-                        const encodedTrack = fallbackTrack.encoded || fallbackTrack.track;
-                        await this.player.playTrack({ track: { encoded: encodedTrack } });
-                        return;
+                        const fallbackCandidate = res.data.find((t) => t.info?.identifier !== current.info?.identifier) || res.data[0];
+                        if (fallbackCandidate && fallbackCandidate.info?.identifier !== current.info?.identifier) {
+                            const fallbackTrack = { ...fallbackCandidate, requester: current.requester, _isFallback: true };
+                            this.current = fallbackTrack;
+                            const encodedTrack = fallbackTrack.encoded || fallbackTrack.track;
+                            await this.player.playTrack({ track: { encoded: encodedTrack } });
+                            return;
+                        }
                     }
                 }
             }
@@ -212,6 +317,22 @@ export class Queue {
         }
         this.textChannel.send(MusicEmbedBuilder.error("Could not stream this track from YouTube or SoundCloud.")).catch(() => { });
         this.playNext();
+    }
+    startIdleTimer() {
+        this.clearIdleTimer();
+        this.idleTimeout = setTimeout(() => {
+            if (this.tracks.length === 0 && !this.current && !this.twentyFourSeven) {
+                logger.info(`Idle timeout expired in guild ${this.guildId}. Leaving voice channel.`);
+                this.textChannel.send(MusicEmbedBuilder.success("Disconnected", "Left the voice channel due to 2 minutes of inactivity. Use `/play` to play again!")).catch(() => { });
+                this.destroy();
+            }
+        }, 120000); // 2 minutes
+    }
+    clearIdleTimer() {
+        if (this.idleTimeout) {
+            clearTimeout(this.idleTimeout);
+            this.idleTimeout = null;
+        }
     }
     async updateVoiceChannelStatus(statusText) {
         try {
@@ -228,6 +349,7 @@ export class Queue {
         }
     }
     destroy() {
+        this.clearIdleTimer();
         if (this.lyricsInterval) {
             clearInterval(this.lyricsInterval);
             this.lyricsInterval = null;

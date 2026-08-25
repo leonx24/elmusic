@@ -22,6 +22,7 @@ export default class HelpCommand extends Command {
       `\`${p}skip\` | \`/skip\` - Skip the currently playing track (Alias: \`${p}s\`)`,
       `\`${p}leave\` | \`/leave\` - Disconnect the bot from the voice channel (Alias: \`${p}dc\`, \`${p}stop\`)`,
       `\`${p}volume\` | \`/volume <1-100>\` - Set the playback volume (Alias: \`${p}vol\`, \`${p}v\`)`,
+      `\`${p}loop\` | \`/loop [mode]\` - Set or cycle repeat mode: off, track, or queue (Alias: \`${p}repeat\`, \`${p}lp\`)`,
       `\`${p}lyrics\` | \`/lyrics [query]\` - Fetch synchronized lyrics for the current or requested song (Alias: \`${p}l\`)`,
       `\`${p}247\` | \`/247\` - Toggle 24/7 mode to keep bot in voice channel when idle`,
       `\`${p}autoplay\` | \`/autoplay\` - Toggle smart autoplay to continuously play similar recommended songs (Alias: \`${p}ap\`)`,

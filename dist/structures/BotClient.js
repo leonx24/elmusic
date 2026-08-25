@@ -26,7 +26,7 @@ export class BotClient extends Client {
             moveOnDisconnect: true,
             resume: true,
             resumeTimeout: 60,
-            reconnectTries: 5,
+            reconnectTries: 50,
             reconnectInterval: 5000,
         });
         // Setup Shoukaku Event Listeners

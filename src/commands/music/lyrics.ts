@@ -163,7 +163,7 @@ export default class LyricsCommand extends Command {
               activeQueue.lyricsInterval = null;
             }
           });
-        }, 2000);
+        }, 3500);
 
         queue.lyricsInterval = interval;
         return;
