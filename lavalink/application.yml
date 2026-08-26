@@ -6,12 +6,12 @@ server:
 
 lavalink:
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.3"
       snapshot: false
   server:
     password: "youshallnotpass"
     sources:
-      youtube: false # Disable built-in source, let the plugin handle it
+      youtube: false
       bandcamp: true
       soundcloud: false
       twitch: true
@@ -49,24 +49,25 @@ plugins:
     oauth:
       enabled: true
       refreshToken: "${YOUTUBE_REFRESH_TOKEN:}"
-      skipInitialization: true
+      skipInitialization: false
+    ratelimit:
+      ipBlocks: []
+      excludedIps: []
+      strategy: "ROTATING"
+      searchTriggersFetch: false
     clients:
-      - TVHTML5_SIMPLY
-      - TV
-      - ANDROID_VR
       - ANDROID_MUSIC
+      - ANDROID_VR
       - MUSIC
       - WEB
 
 logging:
   file:
     path: ./logs/
-
   level:
     root: INFO
     lavalink: INFO
     dev.lavalink.youtube: DEBUG
-
   request:
     enabled: true
     includeHeaders: false
