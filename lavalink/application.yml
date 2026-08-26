@@ -13,7 +13,7 @@ lavalink:
     sources:
       youtube: false # Disable built-in source, let the plugin handle it
       bandcamp: true
-      soundcloud: true
+      soundcloud: false
       twitch: true
       vimeo: true
       http: true
@@ -35,7 +35,7 @@ lavalink:
     youtubePlaylistLoadLimit: 100
     playerUpdateInterval: 5
     youtubeSearchEnabled: true
-    soundcloudSearchEnabled: true
+    soundcloudSearchEnabled: false
     gc-warnings: true
 
 plugins:

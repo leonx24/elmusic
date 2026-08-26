@@ -220,7 +220,7 @@ export class Queue {
             `ytmsearch:${cleanedLastTitle} mix`,
             `ytmsearch:${cleanedLastTitle} radio`,
             `ytmsearch:${cleanedLastAuthor} radio`,
-            `scsearch:${cleanedLastTitle} mix`,
+            `ytsearch:${cleanedLastTitle} audio`,
             `ytmsearch:${cleanedLastTitle}`
           ];
 
@@ -332,10 +332,10 @@ export class Queue {
         
         if (node && searchQuery.length > 0) {
           logger.info(`Attempting stream fallback for "${searchQuery}"...`);
-          // Try SoundCloud first for 100% reliable streams on datacenter IPs
-          let res = await node.rest.resolve(`scsearch:${searchQuery}`);
+          // Try YouTube Music first, then standard YouTube
+          let res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
           if (!res || !res.data || !Array.isArray(res.data) || res.data.length === 0) {
-            res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
+            res = await node.rest.resolve(`ytsearch:${searchQuery}`);
           }
           if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
             const fallbackCandidate = res.data.find((t: any) => t.info?.identifier !== current.info?.identifier) || res.data[0];
@@ -353,7 +353,7 @@ export class Queue {
       }
     }
 
-    this.textChannel.send(MusicEmbedBuilder.error("Could not stream this track from YouTube or SoundCloud.")).catch(() => {});
+    this.textChannel.send(MusicEmbedBuilder.error("Could not stream this track from YouTube.")).catch(() => {});
     this.playNext();
   }
 

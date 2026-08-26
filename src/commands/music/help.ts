@@ -17,7 +17,7 @@ export default class HelpCommand extends Command {
     const p = config.prefix;
 
     const commandsList = [
-      `\`${p}play\` | \`/play <query|url>\` - Play music from YouTube, Spotify, or SoundCloud (Alias: \`${p}p\`)`,
+      `\`${p}play\` | \`/play <query|url>\` - Play music from YouTube or Spotify (Alias: \`${p}p\`)`,
       `\`${p}queue\` | \`/queue\` - Display the current music queue and playing track (Alias: \`${p}q\`)`,
       `\`${p}skip\` | \`/skip\` - Skip the currently playing track (Alias: \`${p}s\`)`,
       `\`${p}leave\` | \`/leave\` - Disconnect the bot from the voice channel (Alias: \`${p}dc\`, \`${p}stop\`)`,

@@ -10,7 +10,7 @@ export default class PlayCommand extends Command {
   constructor() {
     super({
       name: "play",
-      description: "Play music from YouTube/Spotify/SoundCloud in your voice channel",
+      description: "Play music from YouTube or Spotify in your voice channel",
       aliases: ["p"],
       options: [
         {
@@ -86,10 +86,10 @@ export default class PlayCommand extends Command {
       let addedCount = 0;
       for (const sTrack of spotifyData.tracks) {
         try {
-          // Try SoundCloud search first for 100% reliable streaming
-          let res = await node.rest.resolve(`scsearch:${sTrack.query}`);
+          // Resolve Spotify tracks via YouTube Music (fallback to YouTube standard search)
+          let res = await node.rest.resolve(`ytmsearch:${sTrack.query}`);
           if (!res || !res.data || (Array.isArray(res.data) && res.data.length === 0) || res.loadType === "error" || res.loadType === "empty") {
-            res = await node.rest.resolve(`ytmsearch:${sTrack.query}`);
+            res = await node.rest.resolve(`ytsearch:${sTrack.query}`);
           }
           if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
             queue.addTrack(res.data[0], interaction.user.tag);
@@ -124,7 +124,7 @@ export default class PlayCommand extends Command {
     }
 
     // Determine initial search query
-    let searchQuery = /^(https?:\/\/|ytsearch:|ytmsearch:|scsearch:)/.test(query)
+    let searchQuery = /^(https?:\/\/|ytsearch:|ytmsearch:)/.test(query)
       ? query
       : `ytmsearch:${query}`;
 
@@ -166,18 +166,16 @@ export default class PlayCommand extends Command {
 
         const cleanSearch = fallbackText.replace(/https?:\/\/\S+/g, "").trim() || query;
 
-        // Try SoundCloud search fallback
-        result = await node.rest.resolve(`scsearch:${cleanSearch}`);
-
         // Try YouTube standard search fallback
+        result = await node.rest.resolve(`ytsearch:${cleanSearch}`);
         if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
-          result = await node.rest.resolve(`ytsearch:${cleanSearch}`);
+          result = await node.rest.resolve(`ytmsearch:${cleanSearch}`);
         }
       }
 
       if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
         return interaction.editReply(
-          MusicEmbedBuilder.error("Could not resolve or play this track from YouTube/SoundCloud. The source video or playlist may require login or age verification.")
+          MusicEmbedBuilder.error("Could not resolve or play this track from YouTube. The source video or playlist may require login or age verification.")
         );
       }
 
