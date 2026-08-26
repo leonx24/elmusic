@@ -3,6 +3,13 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
+# Load .env file if present so Lavalink receives environment variables (e.g. YOUTUBE_REFRESH_TOKEN)
+if [ -f .env ]; then
+  set -a
+  source .env 2>/dev/null || true
+  set +a
+fi
+
 # Start Lavalink in the background with JVM RAM limit (max 256MB)
 echo "Starting Lavalink Server..."
 cd lavalink

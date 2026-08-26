@@ -51,12 +51,10 @@ plugins:
       refreshToken: "${YOUTUBE_REFRESH_TOKEN:}"
       skipInitialization: true
     clients:
-      - TVHTML5_SIMPLY_EMBEDDED
-      - ANDROID_TESTSUITE
+      - TVHTML5EMBEDDED
       - ANDROID_VR
-      - MUSIC
       - ANDROID_MUSIC
-      - WEB_REMIX
+      - MUSIC
       - WEB
 
 logging:
