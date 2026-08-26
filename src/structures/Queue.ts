@@ -17,6 +17,7 @@ export class Queue {
   public lyricsInterval: NodeJS.Timeout | null = null;
   public idleTimeout: NodeJS.Timeout | null = null;
   private isSkipping = false;
+  private fallbackCandidatesMap = new Map<string, any[]>();
 
   constructor(client: BotClient, player: Player, guildId: string, textChannel: GuildTextBasedChannel) {
     this.client = client;
@@ -36,6 +37,12 @@ export class Queue {
         this.destroy();
       }
     });
+  }
+
+  public setFallbackTracks(track: any, candidates: any[], requester: string) {
+    if (!track?.info?.identifier || !Array.isArray(candidates) || candidates.length === 0) return;
+    const candidatesWithRequester = candidates.map((c) => ({ ...c, requester, _isFallback: true }));
+    this.fallbackCandidatesMap.set(track.info.identifier, candidatesWithRequester);
   }
 
   public addTrack(track: any, requester: string) {
@@ -314,13 +321,33 @@ export class Queue {
   private async onPlayerError(error: any) {
     logger.error(`Lavalink Player error in guild ${this.guildId}:`, error);
 
-    // Snapshot current to avoid null-ref if track ends while fallback is async
     const current = this.current;
+    if (!current) {
+      this.playNext();
+      return;
+    }
 
-    // Automatic fallback for YouTube/SoundCloud stream errors
-    if (current && !current._isFallback) {
+    // 1. Check if we have pre-saved fallback search candidates for this track
+    const trackId = current.info?.identifier;
+    if (trackId && this.fallbackCandidatesMap.has(trackId)) {
+      const candidates = this.fallbackCandidatesMap.get(trackId);
+      if (candidates && candidates.length > 0) {
+        const nextCandidate = candidates.shift()!;
+        logger.info(`Retrying playback with next search candidate "${nextCandidate.info?.title}" for guild ${this.guildId}...`);
+        this.current = nextCandidate;
+        const encodedTrack = nextCandidate.encoded || (nextCandidate as any).track;
+        try {
+          await this.player.playTrack({ track: { encoded: encodedTrack } });
+          return;
+        } catch (retryErr) {
+          logger.error(`Failed to play candidate track:`, retryErr);
+        }
+      }
+    }
+
+    // 2. Automatic fallback search if not already a fallback
+    if (!current._isFallback) {
       current._isFallback = true;
-      if (this.current) this.current._isFallback = true;
       try {
         let title = current.info?.title || "";
         let author = current.info?.author || "";
@@ -331,8 +358,7 @@ export class Queue {
         const node = this.client.shoukaku.getIdealNode();
         
         if (node && searchQuery.length > 0) {
-          logger.info(`Attempting stream fallback for "${searchQuery}"...`);
-          // Try YouTube Music first, then standard YouTube
+          logger.info(`Attempting stream fallback search for "${searchQuery}"...`);
           let res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
           if (!res || !res.data || !Array.isArray(res.data) || res.data.length === 0) {
             res = await node.rest.resolve(`ytsearch:${searchQuery}`);
@@ -353,7 +379,8 @@ export class Queue {
       }
     }
 
-    this.textChannel.send(MusicEmbedBuilder.error("Could not stream this track from YouTube.")).catch(() => {});
+    const errMessage = error?.exception?.message || error?.message || "All clients failed to stream the track";
+    this.textChannel.send(MusicEmbedBuilder.error(`Could not stream this track from YouTube.\n\n**Details:** \`${errMessage.substring(0, 200)}\``)).catch(() => {});
     this.playNext();
   }
 

@@ -51,18 +51,17 @@ export default class PlayCommand extends Command {
       });
     }
 
-    // Defer the reply because resolving search can take some time
     await interaction.deferReply();
 
     const node = client.shoukaku.getIdealNode();
-    
+
     if (!node) {
       return interaction.editReply(
         MusicEmbedBuilder.error("Lavalink node is not available. Please try again later.")
       );
     }
 
-    // Check if query is a Spotify link
+    // === Spotify handling ===
     if (SpotifyResolver.isSpotifyUrl(query)) {
       const spotifyData = await SpotifyResolver.resolve(query);
       if (!spotifyData || spotifyData.tracks.length === 0) {
@@ -71,7 +70,6 @@ export default class PlayCommand extends Command {
         );
       }
 
-      // Join voice channel and get or create queue
       let queue = client.queues.get(interaction.guildId!);
       if (!queue) {
         const player = await client.shoukaku.joinVoiceChannel({
@@ -86,7 +84,6 @@ export default class PlayCommand extends Command {
       let addedCount = 0;
       for (const sTrack of spotifyData.tracks) {
         try {
-          // Resolve Spotify tracks via YouTube Music (fallback to YouTube standard search)
           let res = await node.rest.resolve(`ytmsearch:${sTrack.query}`);
           if (!res || !res.data || (Array.isArray(res.data) && res.data.length === 0) || res.loadType === "error" || res.loadType === "empty") {
             res = await node.rest.resolve(`ytsearch:${sTrack.query}`);
@@ -149,7 +146,6 @@ export default class PlayCommand extends Command {
       if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
         let fallbackText = query;
 
-        // If query is a YouTube URL, extract title via YouTube public oEmbed endpoint
         if (/https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(query)) {
           try {
             const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(query)}&format=json`);
@@ -166,14 +162,24 @@ export default class PlayCommand extends Command {
 
         const cleanSearch = fallbackText.replace(/https?:\/\/\S+/g, "").trim() || query;
 
-        // Try YouTube standard search fallback
         result = await node.rest.resolve(`ytsearch:${cleanSearch}`);
         if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
           result = await node.rest.resolve(`ytmsearch:${cleanSearch}`);
         }
       }
 
-      if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "error" || result.loadType === "empty") {
+      if (result?.loadType === "error") {
+        const errData = result.data as any;
+        const errMsg = errData?.message || errData?.exception?.message || "Unknown Lavalink error";
+        logger.error("Lavalink resolve error:", errMsg);
+        return interaction.editReply(
+          MusicEmbedBuilder.error(
+            `Failed to load track from Lavalink.\n\n**Error:** ${errMsg}\n\nThis usually means the YouTube plugin cannot stream this video. Try a different track, or check the bot logs for client-level errors.`
+          )
+        );
+      }
+
+      if (!result || !result.data || (Array.isArray(result.data) && result.data.length === 0) || result.loadType === "empty") {
         return interaction.editReply(
           MusicEmbedBuilder.error("Could not resolve or play this track from YouTube. The source video or playlist may require login or age verification.")
         );
@@ -184,7 +190,6 @@ export default class PlayCommand extends Command {
       // Get or create queue
       let queue = client.queues.get(interaction.guildId!);
       if (!queue) {
-        // Join voice channel first
         const player = await client.shoukaku.joinVoiceChannel({
           guildId: interaction.guildId!,
           channelId: voiceChannel.id,
@@ -219,10 +224,18 @@ export default class PlayCommand extends Command {
       } else if (loadType === "search" || loadType === "track") {
         const tracks = Array.isArray(data) ? data : [data];
         const track = tracks[0];
-        
+
+        const fallbackCandidates = tracks.slice(1, 4);
+        try {
+          if (typeof queue.setFallbackTracks === "function") {
+            queue.setFallbackTracks(track, fallbackCandidates, interaction.user.tag);
+          }
+        } catch (err) {
+          logger.warn("Could not set fallback tracks:", err);
+        }
+
         queue.addTrack(track, interaction.user.tag);
 
-        // If it's already playing, send a queue added message, otherwise nowPlaying handles it
         if (queue.current && queue.tracks.length > 0) {
           return interaction.editReply(
             MusicEmbedBuilder.success(
@@ -232,7 +245,6 @@ export default class PlayCommand extends Command {
           );
         }
 
-        // Edit reply with a loading/playing message (which will soon be updated by now playing event)
         return interaction.editReply(
           MusicEmbedBuilder.success(
             "Playing Track",
@@ -241,8 +253,6 @@ export default class PlayCommand extends Command {
         );
       } else if (loadType === "empty") {
         return interaction.editReply(MusicEmbedBuilder.error("No results found for your query."));
-      } else if (loadType === "error") {
-        return interaction.editReply(MusicEmbedBuilder.error("Lavalink failed to load the track. The source might be blocked or unavailable."));
       } else {
         return interaction.editReply(MusicEmbedBuilder.error(`Could not load the track. Unknown load type: "${loadType}"`));
       }
@@ -262,14 +272,12 @@ export default class PlayCommand extends Command {
     if (!node) return interaction.respond([]).catch(() => {});
 
     try {
-      // Timeout promise after 2000ms to guarantee response within Discord's 3s limit
       const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 2000));
-      
+
       const searchPromise = (async () => {
-        // Try YouTube Music search first for official original track suggestions
         let res = await node.rest.resolve(`ytmsearch:${focusedValue}`);
         if (!res || !res.data || !Array.isArray(res.data) || res.data.length === 0) {
-          res = await node.rest.resolve(`scsearch:${focusedValue}`);
+          res = await node.rest.resolve(`ytsearch:${focusedValue}`);
         }
         return res;
       })();
@@ -283,7 +291,6 @@ export default class PlayCommand extends Command {
       let tracks = [...result.data];
       const isUserSearchingCover = /cover|karaoke|tribute|remix|instrumental/i.test(focusedValue);
 
-      // Filter and rank original tracks above covers/tributes unless specifically requested
       if (!isUserSearchingCover) {
         tracks.sort((a: any, b: any) => {
           const aTitle = a.info?.title || "";
