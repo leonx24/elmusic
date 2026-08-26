@@ -150,8 +150,9 @@ export class Queue {
         logger.info(`Track ended in guild ${this.guildId}. Reason: ${endReason}`);
         const wasSkipping = this.isSkipping;
         this.isSkipping = false;
-        // Ignore end event if track was replaced, cleaned up, or failed (loadFailed is handled by onPlayerError)
-        if (endReason === "replaced" || endReason === "cleanup" || endReason === "loadfailed" || endReason === "failed") {
+        // Only proceed to next track if track actually finished naturally or was explicitly skipped
+        // (Prevents premature queue finish on track errors, stream fallback replacements, or /stop)
+        if (endReason !== "finished" && !wasSkipping) {
             return;
         }
         // Handle loop status (skip bypasses track loop)
