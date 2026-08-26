@@ -328,12 +328,20 @@ export class Queue {
     }
 
     // 1. Check if we have pre-saved fallback search candidates for this track
-    const trackId = current.info?.identifier;
+    const trackId = current.info?.identifier || current.encoded;
     if (trackId && this.fallbackCandidatesMap.has(trackId)) {
       const candidates = this.fallbackCandidatesMap.get(trackId);
       if (candidates && candidates.length > 0) {
         const nextCandidate = candidates.shift()!;
-        logger.info(`Retrying playback with next search candidate "${nextCandidate.info?.title}" for guild ${this.guildId}...`);
+        logger.warn(`Track failed to play: ${current.info?.title}. Retrying with next candidate: "${nextCandidate.info?.title}" in guild ${this.guildId}...`);
+        
+        this.textChannel.send(
+          MusicEmbedBuilder.warning(
+            "Playback Retry",
+            `⚠️ Track **${current.info?.title}** encountered an issue, trying alternative version: **${nextCandidate.info?.title}**...`
+          )
+        ).catch(() => {});
+
         this.current = nextCandidate;
         const encodedTrack = nextCandidate.encoded || (nextCandidate as any).track;
         try {
@@ -381,6 +389,7 @@ export class Queue {
 
     const errMessage = error?.exception?.message || error?.message || "All clients failed to stream the track";
     this.textChannel.send(MusicEmbedBuilder.error(`Could not stream this track from YouTube.\n\n**Details:** \`${errMessage.substring(0, 200)}\``)).catch(() => {});
+    if (trackId) this.fallbackCandidatesMap.delete(trackId);
     this.playNext();
   }
 
@@ -404,6 +413,10 @@ export class Queue {
     }
   }
 
+  public cleanupFallbacks() {
+    this.fallbackCandidatesMap.clear();
+  }
+
   private async updateVoiceChannelStatus(statusText: string) {
     try {
       const guild = this.client.guilds.cache.get(this.guildId);
@@ -420,6 +433,7 @@ export class Queue {
 
   public destroy() {
     this.clearIdleTimer();
+    this.cleanupFallbacks();
     if (this.lyricsInterval) {
       clearInterval(this.lyricsInterval);
       this.lyricsInterval = null;

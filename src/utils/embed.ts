@@ -55,6 +55,18 @@ export class MusicComponentBuilder {
   }
 
   /**
+   * Warning response template
+   */
+  public static warning(title: string, description: string) {
+    const cleanTitle = title.replace(/^[\u{1F300}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}⚠️✅❌🎵🎤🎶📌📊⏰🔁]\s*/u, "");
+    return buildV2Container({
+      title: cleanTitle,
+      description,
+      footer: "elmusic | leon x music system",
+    });
+  }
+
+  /**
    * Error response template
    */
   public static error(description: string) {
