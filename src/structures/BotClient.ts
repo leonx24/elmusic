@@ -76,13 +76,16 @@ export class BotClient extends Client {
         fs.writeFileSync(cookiePath, config.youtubeCookies, "utf8");
         logger.info("YouTube cookies successfully written to /tmp/cookies.txt");
 
-        // Write yt-dlp config to default config path so yt-dlp binary automatically uses it
+        // Write yt-dlp config to default config paths so yt-dlp binary automatically uses it
         const ytDlpConfigDir = path.join(os.homedir(), ".config", "yt-dlp");
         if (!fs.existsSync(ytDlpConfigDir)) {
           fs.mkdirSync(ytDlpConfigDir, { recursive: true });
         }
         const ytDlpConfigFile = path.join(ytDlpConfigDir, "config");
         fs.writeFileSync(ytDlpConfigFile, `--cookies ${cookiePath}\n`, "utf8");
+        try {
+          fs.writeFileSync("/etc/yt-dlp.conf", `--cookies ${cookiePath}\n`, "utf8");
+        } catch {}
         logger.info(`yt-dlp default config written with --cookies ${cookiePath}`);
       } catch (err) {
         logger.warn("Failed to write YouTube cookies:", err);
