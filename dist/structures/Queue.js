@@ -14,6 +14,7 @@ export class Queue {
     lyricsInterval = null;
     idleTimeout = null;
     isSkipping = false;
+    fallbackCandidatesMap = new Map();
     constructor(client, player, guildId, textChannel) {
         this.client = client;
         this.player = player;
@@ -30,6 +31,12 @@ export class Queue {
                 this.destroy();
             }
         });
+    }
+    setFallbackTracks(track, candidates, requester) {
+        if (!track?.info?.identifier || !Array.isArray(candidates) || candidates.length === 0)
+            return;
+        const candidatesWithRequester = candidates.map((c) => ({ ...c, requester, _isFallback: true }));
+        this.fallbackCandidatesMap.set(track.info.identifier, candidatesWithRequester);
     }
     addTrack(track, requester) {
         this.clearIdleTimer();
@@ -194,7 +201,7 @@ export class Queue {
                         `ytmsearch:${cleanedLastTitle} mix`,
                         `ytmsearch:${cleanedLastTitle} radio`,
                         `ytmsearch:${cleanedLastAuthor} radio`,
-                        `scsearch:${cleanedLastTitle} mix`,
+                        `ytsearch:${cleanedLastTitle} audio`,
                         `ytmsearch:${cleanedLastTitle}`
                     ];
                     let nextTrack = null;
@@ -278,13 +285,33 @@ export class Queue {
     }
     async onPlayerError(error) {
         logger.error(`Lavalink Player error in guild ${this.guildId}:`, error);
-        // Snapshot current to avoid null-ref if track ends while fallback is async
         const current = this.current;
-        // Automatic fallback for YouTube/SoundCloud stream errors
-        if (current && !current._isFallback) {
+        if (!current) {
+            this.playNext();
+            return;
+        }
+        // 1. Check if we have pre-saved fallback search candidates for this track
+        const trackId = current.info?.identifier || current.encoded;
+        if (trackId && this.fallbackCandidatesMap.has(trackId)) {
+            const candidates = this.fallbackCandidatesMap.get(trackId);
+            if (candidates && candidates.length > 0) {
+                const nextCandidate = candidates.shift();
+                logger.warn(`Track failed to play: ${current.info?.title}. Retrying with next candidate: "${nextCandidate.info?.title}" in guild ${this.guildId}...`);
+                this.textChannel.send(MusicEmbedBuilder.warning("Playback Retry", `⚠️ Track **${current.info?.title}** encountered an issue, trying alternative version: **${nextCandidate.info?.title}**...`)).catch(() => { });
+                this.current = nextCandidate;
+                const encodedTrack = nextCandidate.encoded || nextCandidate.track;
+                try {
+                    await this.player.playTrack({ track: { encoded: encodedTrack } });
+                    return;
+                }
+                catch (retryErr) {
+                    logger.error(`Failed to play candidate track:`, retryErr);
+                }
+            }
+        }
+        // 2. Automatic fallback search if not already a fallback
+        if (!current._isFallback) {
             current._isFallback = true;
-            if (this.current)
-                this.current._isFallback = true;
             try {
                 let title = current.info?.title || "";
                 let author = current.info?.author || "";
@@ -294,11 +321,10 @@ export class Queue {
                 const searchQuery = `${author} ${cleanTitleText}`.trim() || title;
                 const node = this.client.shoukaku.getIdealNode();
                 if (node && searchQuery.length > 0) {
-                    logger.info(`Attempting stream fallback for "${searchQuery}"...`);
-                    // Try SoundCloud first for 100% reliable streams on datacenter IPs
-                    let res = await node.rest.resolve(`scsearch:${searchQuery}`);
+                    logger.info(`Attempting stream fallback search for "${searchQuery}"...`);
+                    let res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
                     if (!res || !res.data || !Array.isArray(res.data) || res.data.length === 0) {
-                        res = await node.rest.resolve(`ytmsearch:${searchQuery}`);
+                        res = await node.rest.resolve(`ytsearch:${searchQuery}`);
                     }
                     if (res && res.data && Array.isArray(res.data) && res.data.length > 0) {
                         const fallbackCandidate = res.data.find((t) => t.info?.identifier !== current.info?.identifier) || res.data[0];
@@ -316,7 +342,10 @@ export class Queue {
                 logger.error(`Stream fallback failed for guild ${this.guildId}:`, fallbackErr);
             }
         }
-        this.textChannel.send(MusicEmbedBuilder.error("Could not stream this track from YouTube or SoundCloud.")).catch(() => { });
+        const errMessage = error?.exception?.message || error?.message || "All clients failed to stream the track";
+        this.textChannel.send(MusicEmbedBuilder.error(`Could not stream this track from YouTube.\n\n**Details:** \`${errMessage.substring(0, 200)}\``)).catch(() => { });
+        if (trackId)
+            this.fallbackCandidatesMap.delete(trackId);
         this.playNext();
     }
     startIdleTimer() {
@@ -335,6 +364,9 @@ export class Queue {
             this.idleTimeout = null;
         }
     }
+    cleanupFallbacks() {
+        this.fallbackCandidatesMap.clear();
+    }
     async updateVoiceChannelStatus(statusText) {
         try {
             const guild = this.client.guilds.cache.get(this.guildId);
@@ -351,6 +383,7 @@ export class Queue {
     }
     destroy() {
         this.clearIdleTimer();
+        this.cleanupFallbacks();
         if (this.lyricsInterval) {
             clearInterval(this.lyricsInterval);
             this.lyricsInterval = null;
