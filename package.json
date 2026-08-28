@@ -21,7 +21,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.2",
     "@distube/spotify": "^2.0.2",
     "@distube/yt-dlp": "^2.0.1",
@@ -29,6 +28,7 @@
     "discord.js": "^14.15.3",
     "distube": "^5.2.3",
     "dotenv": "^16.4.5",
+    "opusscript": "^0.0.8",
     "sodium-native": "^5.1.0"
   },
   "devDependencies": {

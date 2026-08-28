@@ -1,10 +1,11 @@
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
-# Install python3, ffmpeg, and curl (required by yt-dlp & audio streaming)
+# Install python3, ffmpeg, build tools, and curl
 RUN apt-get update && apt-get install -y \
     python3 \
     ffmpeg \
     curl \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -13,9 +14,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
-# Copy all source files and build
+# Copy all source files and build TypeScript
 COPY . .
 RUN npm run build
 
-# Start the bot directly via Node.js
+# Start the bot
 CMD ["npm", "start"]
