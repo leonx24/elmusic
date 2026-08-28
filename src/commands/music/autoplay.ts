@@ -1,4 +1,4 @@
- import { ChatInputCommandInteraction, GuildMember } from "discord.js";
+import { ChatInputCommandInteraction, GuildMember } from "discord.js";
 import { Command } from "../../structures/Command.js";
 import { BotClient } from "../../structures/BotClient.js";
 import { MusicEmbedBuilder } from "../../utils/embed.js";
@@ -23,7 +23,7 @@ export default class AutoplayCommand extends Command {
       });
     }
 
-    const queue = client.queues.get(interaction.guildId!);
+    const queue = client.distube.getQueue(interaction.guildId!);
     if (!queue) {
       return interaction.reply({
         ...MusicEmbedBuilder.error("There is no active music queue right now. Play some music first!"),
@@ -39,11 +39,10 @@ export default class AutoplayCommand extends Command {
       });
     }
 
-    // Toggle autoplay
-    queue.autoplay = !queue.autoplay;
+    const autoplayStatus = client.distube.toggleAutoplay(interaction.guildId!);
 
-    const statusText = queue.autoplay ? "ENABLED" : "DISABLED";
-    const descriptionText = queue.autoplay
+    const statusText = autoplayStatus ? "ENABLED" : "DISABLED";
+    const descriptionText = autoplayStatus
       ? "Autoplay is now ON. When the current queue finishes, similar recommended songs will play automatically."
       : "Autoplay is now OFF. Playback will stop when the queue finishes.";
 

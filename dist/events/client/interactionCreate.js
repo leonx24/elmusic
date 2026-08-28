@@ -30,8 +30,8 @@ export default class InteractionCreateEvent extends Event {
                     ephemeral: true,
                 });
             }
-            const queue = client.queues.get(interaction.guildId);
-            if (!queue || !queue.current) {
+            const queue = client.distube.getQueue(interaction.guildId);
+            if (!queue || !queue.songs || queue.songs.length === 0) {
                 return interaction.reply({
                     ...MusicEmbedBuilder.error("There is no active music player in this server."),
                     ephemeral: true,
@@ -46,31 +46,44 @@ export default class InteractionCreateEvent extends Event {
             }
             try {
                 if (customId === "music_pause_resume") {
-                    const isPaused = queue.player.paused;
-                    await queue.player.setPaused(!isPaused);
+                    const isPaused = queue.paused;
+                    if (isPaused) {
+                        queue.resume();
+                    }
+                    else {
+                        queue.pause();
+                    }
                     return interaction.reply({
                         ...MusicEmbedBuilder.success(isPaused ? "Resumed" : "Paused", `Playback has been ${isPaused ? "resumed" : "paused"}.`),
                         ephemeral: true,
                     });
                 }
                 else if (customId === "music_skip") {
-                    const currentTitle = queue.current?.info?.title || "track";
-                    await queue.skip();
+                    const currentTitle = queue.songs[0]?.name || "track";
+                    if (!queue.autoplay && queue.songs.length <= 1) {
+                        await client.distube.stop(interaction.guildId);
+                        return interaction.reply({
+                            ...MusicEmbedBuilder.success("Stopped", `Skipped **${currentTitle}** and ended the queue.`),
+                            ephemeral: true,
+                        });
+                    }
+                    await client.distube.skip(interaction.guildId);
                     return interaction.reply({
                         ...MusicEmbedBuilder.success("Skipped", `Skipped **${currentTitle}**.`),
                         ephemeral: true,
                     });
                 }
                 else if (customId === "music_autoplay") {
-                    queue.autoplay = !queue.autoplay;
-                    const status = queue.autoplay ? "ENABLED" : "DISABLED";
+                    const isAutoplay = client.distube.toggleAutoplay(interaction.guildId);
+                    const status = isAutoplay ? "ENABLED" : "DISABLED";
                     return interaction.reply({
                         ...MusicEmbedBuilder.success(`Autoplay: ${status}`, `Autoplay mode is now ${status}.`),
                         ephemeral: true,
                     });
                 }
                 else if (customId === "music_stop") {
-                    queue.destroy();
+                    await client.distube.stop(interaction.guildId);
+                    client.distube.voices.leave(interaction.guildId);
                     return interaction.reply({
                         ...MusicEmbedBuilder.success("Stopped", "Stopped music playback and left the voice channel."),
                         ephemeral: true,

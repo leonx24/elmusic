@@ -14,36 +14,37 @@ export default class QueueCommand extends Command {
   }
 
   async run(client: BotClient, interaction: ChatInputCommandInteraction): Promise<unknown> {
-    const queue = client.queues.get(interaction.guildId!);
-    if (!queue || !queue.current) {
+    const queue = client.distube.getQueue(interaction.guildId!);
+    if (!queue || !queue.songs || queue.songs.length === 0) {
       return interaction.reply({
         ...MusicEmbedBuilder.error("There is no music playing right now."),
         ephemeral: true,
       });
     }
 
-    const currentTrack = queue.current;
-    const tracksList = queue.tracks;
+    const currentSong = queue.songs[0];
+    const upcomingSongs = queue.songs.slice(1);
 
-    const currentDuration = MusicEmbedBuilder.formatDuration(currentTrack.info.length);
-    const nowPlayingText = `**Now Playing:**\n[${currentTrack.info.title}](${currentTrack.info.uri || "#"}) | \`${currentDuration}\` (Requested by: ${currentTrack.requester})`;
+    const nowPlayingText = `**Now Playing:**\n[${currentSong.name}](${currentSong.url || "#"}) | \`${currentSong.formattedDuration}\` (Requested by: ${currentSong.user?.tag || "User"})`;
 
     let queueListText = "";
-    if (tracksList.length === 0) {
+    if (upcomingSongs.length === 0) {
       queueListText = "No other songs in the queue.";
     } else {
-      queueListText = tracksList
+      queueListText = upcomingSongs
         .slice(0, 10)
-        .map((track, i) => {
-          const duration = MusicEmbedBuilder.formatDuration(track.info.length);
-          return `**${i + 1}.** [${track.info.title}](${track.info.uri || "#"}) | \`${duration}\` (Requested by: ${track.requester})`;
+        .map((song, i) => {
+          return `**${i + 1}.** [${song.name}](${song.url || "#"}) | \`${song.formattedDuration}\` (Requested by: ${song.user?.tag || "User"})`;
         })
         .join("\n");
 
-      if (tracksList.length > 10) {
-        queueListText += `\n*...and ${tracksList.length - 10} more tracks*`;
+      if (upcomingSongs.length > 10) {
+        queueListText += `\n*...and ${upcomingSongs.length - 10} more tracks*`;
       }
     }
+
+    const repeatModeText = queue.repeatMode === 1 ? "Track" : queue.repeatMode === 2 ? "Queue" : "Off";
+    const is247 = client.twentyFourSevenGuilds.has(interaction.guildId!);
 
     return interaction.reply(
       buildV2Container({
@@ -56,7 +57,7 @@ export default class QueueCommand extends Command {
           },
           {
             title: "Status & Settings",
-            content: `• **Total Songs:** ${tracksList.length + 1}\n• **Loop Mode:** ${queue.loop.toUpperCase()}\n• **24/7 Standby:** ${queue.twentyFourSeven ? "ENABLED" : "DISABLED"}`,
+            content: `• **Total Songs:** ${queue.songs.length}\n• **Volume:** ${queue.volume}%\n• **Loop Mode:** ${repeatModeText}\n• **Autoplay:** ${queue.autoplay ? "ENABLED" : "DISABLED"}\n• **24/7 Standby:** ${is247 ? "ENABLED" : "DISABLED"}`,
           },
         ],
         footer: "elmusic | leon x music system",

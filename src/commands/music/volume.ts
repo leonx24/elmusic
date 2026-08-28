@@ -33,8 +33,8 @@ export default class VolumeCommand extends Command {
       });
     }
 
-    const queue = client.queues.get(interaction.guildId!);
-    if (!queue || !queue.current) {
+    const queue = client.distube.getQueue(interaction.guildId!);
+    if (!queue || !queue.songs || queue.songs.length === 0) {
       return interaction.reply({
         ...MusicEmbedBuilder.error("There is no music playing right now."),
         ephemeral: true,
@@ -52,14 +52,12 @@ export default class VolumeCommand extends Command {
     const level = interaction.options.getInteger("level");
 
     if (level === null) {
-      // If no level specified, show the current volume
       return interaction.reply(
-        MusicEmbedBuilder.success("Current Volume", `The current volume level is **${queue.player.volume}%**`)
+        MusicEmbedBuilder.success("Current Volume", `The current volume level is **${queue.volume}%**`)
       );
     }
 
-    // Change volume
-    await queue.setVolume(level);
+    client.distube.setVolume(interaction.guildId!, level);
 
     return interaction.reply(
       MusicEmbedBuilder.success("Volume Updated", `Volume has been set to **${level}%**`)

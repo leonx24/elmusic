@@ -11,6 +11,8 @@ interface LyricLine {
 }
 
 export default class LyricsCommand extends Command {
+  private lyricsIntervals = new Map<string, NodeJS.Timeout>();
+
   constructor() {
     super({
       name: "lyrics",
@@ -29,23 +31,23 @@ export default class LyricsCommand extends Command {
 
   async run(client: BotClient, interaction: ChatInputCommandInteraction): Promise<unknown> {
     let query = interaction.options.getString("query");
-    const queue = client.queues.get(interaction.guildId!);
+    const queue = client.distube.getQueue(interaction.guildId!);
     
     // Defer the reply since fetching lyrics from an external API can take a few seconds
     await interaction.deferReply();
 
     // Determine if we should run in live lyrics mode (only if they search currently playing song)
-    const isLiveMode = !query && queue && queue.current;
+    const isLiveMode = !query && queue && queue.songs && queue.songs.length > 0;
 
     if (!query) {
-      if (!queue || !queue.current) {
+      if (!queue || !queue.songs || queue.songs.length === 0) {
         return interaction.editReply(
           MusicEmbedBuilder.error(
             "No music is playing right now. Please provide a song title using `/lyrics query: [song]`"
           )
         );
       }
-      query = `${queue.current.info.author} - ${queue.current.info.title}`;
+      query = `${queue.songs[0].uploader?.name || ""} - ${queue.songs[0].name}`;
     }
 
     // Clean the song title to increase lyrics lookup success rate
@@ -68,44 +70,44 @@ export default class LyricsCommand extends Command {
 
       const data = (await response.json()) as any[];
 
-      if (!Array.isArray(data) || data.length === 0) {
-        return this.sendNoLyricsFound(interaction, cleanQuery);
+      if (!data || data.length === 0) {
+        return interaction.editReply(
+          MusicEmbedBuilder.warning(
+            "Lyrics Not Found",
+            `Could not find lyrics for **${query}**.\nTry searching with artist and title explicitly (e.g. \`/lyrics query: Adele - Easy On Me\`).`
+          )
+        );
       }
 
-      // Check for first track that has either syncedLyrics or plainLyrics
-      let matchedTrack = null;
-      for (const track of data) {
-        if ((track.syncedLyrics && track.syncedLyrics.trim().length > 0) || 
-            (track.plainLyrics && track.plainLyrics.trim().length > 0)) {
-          matchedTrack = track;
-          break;
-        }
+      // Pick the best match (prefer one with syncedLyrics or plainLyrics)
+      let matchedTrack = data.find(t => t.syncedLyrics && t.syncedLyrics.trim().length > 0) ||
+                         data.find(t => t.plainLyrics && t.plainLyrics.trim().length > 0) ||
+                         data[0];
+
+      if (!matchedTrack || (!matchedTrack.plainLyrics && !matchedTrack.syncedLyrics)) {
+        return interaction.editReply(
+          MusicEmbedBuilder.warning(
+            "Lyrics Not Found",
+            `No lyric text available for **${query}**.`
+          )
+        );
       }
 
-      if (!matchedTrack) {
-        return this.sendNoLyricsFound(interaction, cleanQuery);
-      }
-
-      // If the matched lyrics contain Japanese characters (Kanji/Kana), perform a secondary Romaji lookup
-      const primaryLyrics = matchedTrack.plainLyrics || matchedTrack.syncedLyrics || "";
-      if (this.hasJapanese(primaryLyrics)) {
-        logger.info(`Japanese characters detected in primary lyrics. Attempting secondary Romaji search...`);
+      // If Japanese/East Asian song, check if a Romaji version is available in search results
+      if (this.containsJapaneseCharacters(cleanQuery) || this.containsJapaneseCharacters(matchedTrack.trackName || "")) {
         try {
-          const romajiResponse = await fetch(
-            `https://lrclib.net/api/search?q=${encodeURIComponent(cleanQuery + " romaji")}`,
+          const romajiQuery = `${cleanQuery} romaji`;
+          const romajiRes = await fetch(
+            `https://lrclib.net/api/search?q=${encodeURIComponent(romajiQuery)}`,
             {
-              headers: {
-                "User-Agent": "ElMusic Discord Bot (https://github.com/leonx24/elmusic)",
-              },
+              headers: { "User-Agent": "ElMusic Discord Bot" },
             }
           );
-          if (romajiResponse.ok) {
-            const romajiData = (await romajiResponse.json()) as any[];
-            if (Array.isArray(romajiData) && romajiData.length > 0) {
+          if (romajiRes.ok) {
+            const romajiData = (await romajiRes.json()) as any[];
+            if (romajiData && romajiData.length > 0) {
               for (const rTrack of romajiData) {
-                if ((rTrack.syncedLyrics && rTrack.syncedLyrics.trim().length > 0) ||
-                    (rTrack.plainLyrics && rTrack.plainLyrics.trim().length > 0)) {
-                  logger.info(`Successfully retrieved Romaji lyrics for: ${cleanQuery}`);
+                if (rTrack.syncedLyrics || rTrack.plainLyrics) {
                   matchedTrack = rTrack;
                   break;
                 }
@@ -117,11 +119,12 @@ export default class LyricsCommand extends Command {
         }
       }
 
-      const trackName = matchedTrack.trackName || queue?.current?.info?.title || cleanQuery;
-      const artistName = matchedTrack.artistName || queue?.current?.info?.author || "";
+      const currentSong = queue?.songs?.[0];
+      const trackName = matchedTrack.trackName || currentSong?.name || cleanQuery;
+      const artistName = matchedTrack.artistName || currentSong?.uploader?.name || "";
 
       // If live mode is possible and we have synced lyrics, run live scrolling lyrics
-      if (isLiveMode && matchedTrack.syncedLyrics && matchedTrack.syncedLyrics.trim().length > 0) {
+      if (isLiveMode && matchedTrack.syncedLyrics && matchedTrack.syncedLyrics.trim().length > 0 && currentSong) {
         logger.info(`Entering Live Lyrics mode for: ${trackName} in guild ${interaction.guildId}`);
         const parsedLyrics = this.parseLRC(matchedTrack.syncedLyrics);
         
@@ -130,42 +133,42 @@ export default class LyricsCommand extends Command {
           return this.sendPlainLyrics(interaction, trackName, artistName, matchedTrack.plainLyrics);
         }
 
-        const currentTrackId = queue.current.info.identifier;
+        const currentTrackId = currentSong.id;
+        const guildId = interaction.guildId!;
 
         // Clear any pre-existing lyrics intervals for this guild
-        if (queue.lyricsInterval) {
-          clearInterval(queue.lyricsInterval);
+        const existingInterval = this.lyricsIntervals.get(guildId);
+        if (existingInterval) {
+          clearInterval(existingInterval);
+          this.lyricsIntervals.delete(guildId);
         }
 
         // Send initial frame
-        const initialEmbed = this.buildLiveLyricsEmbed(parsedLyrics, queue.player.position, trackName, artistName, queue.current.info.length);
+        const currentPos = queue.currentTime * 1000;
+        const totalLength = currentSong.duration * 1000;
+        const initialEmbed = this.buildLiveLyricsEmbed(parsedLyrics, currentPos, trackName, artistName, totalLength);
         await interaction.editReply(initialEmbed);
 
         // Set interval to update active line every 3.5 seconds
         const interval = setInterval(async () => {
-          // Check if queue has changed or stopped
-          const activeQueue = client.queues.get(interaction.guildId!);
-          if (!activeQueue || !activeQueue.current || activeQueue.current.info.identifier !== currentTrackId) {
+          const activeQueue = client.distube.getQueue(guildId);
+          const activeSong = activeQueue?.songs?.[0];
+          if (!activeQueue || !activeSong || activeSong.id !== currentTrackId) {
             clearInterval(interval);
-            if (activeQueue && activeQueue.lyricsInterval === interval) {
-              activeQueue.lyricsInterval = null;
-            }
+            this.lyricsIntervals.delete(guildId);
             return;
           }
 
-          const currentPos = activeQueue.player.position;
-          const liveEmbed = this.buildLiveLyricsEmbed(parsedLyrics, currentPos, trackName, artistName, activeQueue.current.info.length);
+          const pos = activeQueue.currentTime * 1000;
+          const liveEmbed = this.buildLiveLyricsEmbed(parsedLyrics, pos, trackName, artistName, activeSong.duration * 1000);
           
           await interaction.editReply(liveEmbed).catch(() => {
-            // Clear interval if interaction was deleted or closed
             clearInterval(interval);
-            if (activeQueue.lyricsInterval === interval) {
-              activeQueue.lyricsInterval = null;
-            }
+            this.lyricsIntervals.delete(guildId);
           });
         }, 3500);
 
-        queue.lyricsInterval = interval;
+        this.lyricsIntervals.set(guildId, interval);
         return;
       }
 
@@ -179,136 +182,118 @@ export default class LyricsCommand extends Command {
     }
   }
 
-  /**
-   * Helper to clean YouTube/Music title tags to search for cleaner track names
-   */
   private cleanTitle(title: string): string {
     return title
-      .replace(/\s*-\s*topic/gi, "") // Remove YouTube's auto-generated " - Topic" suffix
-      .replace(/\s+vevo/gi, "")      // Remove " VEVO" music channel suffix
-      .replace(/\(.*?\)/g, "") // Remove anything inside parentheses (e.g. Official Video, Cover, Lirik)
-      .replace(/\[.*?\]/g, "") // Remove anything inside brackets (e.g. Live)
-      .replace(/official\s+(video|audio|lyric|lyrics|music)/gi, "")
-      .replace(/video\s+clip/gi, "")
-      .replace(/feat\..*/gi, "")
-      .replace(/ft\..*/gi, "")
-      .replace(/lirik\s+lagu/gi, "")
+      .replace(/\s*[\(\[](?:official\s*(?:video|audio|music\s*video|lyric\s*video|visualizer|hd|4k)?|mv|lyrics|feat\.?|ft\.?|full\s*song|remix|slowed|reverb)[\)\]]/gi, "")
+      .replace(/ft\..*$/i, "")
+      .replace(/feat\..*$/i, "")
+      .replace(/[^\w\s\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\uFF00-\uFFEF\u4E00-\u9FAF-]/g, " ")
+      .replace(/\s+/g, " ")
       .trim();
   }
 
-  /**
-   * Parse syncedLyrics (LRC string) into an array of LyricLines
-   */
-  private parseLRC(lrc: string): LyricLine[] {
-    const lines = lrc.split("\n");
-    const result: LyricLine[] = [];
-    const timeRegex = /\[(\d+):(\d+)(?:[.:](\d+))?\]/g;
-
-    for (const line of lines) {
-      const text = line.replace(timeRegex, "").trim();
-      timeRegex.lastIndex = 0;
-      const match = timeRegex.exec(line);
-      
-      if (match) {
-        const minutes = parseInt(match[1], 10);
-        const seconds = parseInt(match[2], 10);
-        const hundredths = match[3] ? parseInt(match[3], 10) : 0;
-        
-        // Convert to milliseconds
-        const time = (minutes * 60 + seconds) * 1000 + (match[3] && match[3].length === 2 ? hundredths * 10 : hundredths);
-        
-        // Exclude empty lyric formatting items
-        if (text.length > 0 || result.length > 0) {
-          result.push({ time, text });
-        }
-      }
-    }
-    
-    return result.sort((a, b) => a.time - b.time);
+  private containsJapaneseCharacters(str: string): boolean {
+    return /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f]/.test(str);
   }
 
-  /**
-   * Build the scrolling lyrics embed view based on current playback milliseconds
-   */
-  private buildLiveLyricsEmbed(parsedLyrics: LyricLine[], position: number, trackName: string, artistName: string, totalLength: number): any {
-    // Add latency compensation offset (800ms) to sync better with network lag and audio buffers
-    const adjustedPos = position + 800;
+  private parseLRC(lrcText: string): LyricLine[] {
+    const lines: LyricLine[] = [];
+    const rawLines = lrcText.split("\n");
+    const timeTagRegex = /\[(\d{2}):(\d{2})(?:\.(\d{2,3}))?\]/g;
 
-    // Find the currently active line index
+    for (const rawLine of rawLines) {
+      const tags = [...rawLine.matchAll(timeTagRegex)];
+      if (tags.length === 0) continue;
+
+      const text = rawLine.replace(timeTagRegex, "").trim();
+      if (!text) continue;
+
+      for (const tag of tags) {
+        const minutes = parseInt(tag[1], 10);
+        const seconds = parseInt(tag[2], 10);
+        let ms = 0;
+        if (tag[3]) {
+          ms = tag[3].length === 2 ? parseInt(tag[3], 10) * 10 : parseInt(tag[3], 10);
+        }
+
+        const time = minutes * 60 * 1000 + seconds * 1000 + ms;
+        lines.push({ time, text });
+      }
+    }
+
+    return lines.sort((a, b) => a.time - b.time);
+  }
+
+  private buildLiveLyricsEmbed(
+    lyrics: LyricLine[],
+    currentPositionMs: number,
+    trackName: string,
+    artistName: string,
+    durationMs: number
+  ) {
     let activeIndex = -1;
-    for (let i = 0; i < parsedLyrics.length; i++) {
-      if (adjustedPos >= parsedLyrics[i].time) {
+    for (let i = 0; i < lyrics.length; i++) {
+      if (lyrics[i].time <= currentPositionMs) {
         activeIndex = i;
       } else {
         break;
       }
     }
 
-    const displayLines: string[] = [];
-    
-    // Set viewport: show 3 lines before and 4 lines after current active line
-    const start = Math.max(0, activeIndex - 3);
-    const end = Math.min(parsedLyrics.length - 1, activeIndex + 4);
+    const start = Math.max(0, activeIndex - 2);
+    const end = Math.min(lyrics.length, activeIndex + 4);
+    const visibleLines = lyrics.slice(start, end);
 
-    for (let i = start; i <= end; i++) {
-      const lineText = parsedLyrics[i].text || "♪";
-      if (i === activeIndex) {
-        displayLines.push(`▶️ **${lineText}**`);
-      } else {
-        displayLines.push(`*${lineText}*`);
-      }
+    let displayContent = "";
+    if (visibleLines.length === 0) {
+      displayContent = "*(Waiting for lyrics...)*";
+    } else {
+      displayContent = visibleLines
+        .map((line, idx) => {
+          const actualIndex = start + idx;
+          if (actualIndex === activeIndex) {
+            return `▶ **${line.text}**`;
+          }
+          return `   *${line.text}*`;
+        })
+        .join("\n");
     }
 
-    const elapsed = MusicEmbedBuilder.formatDuration(position);
-    const duration = MusicEmbedBuilder.formatDuration(totalLength);
+    const progressStr = `${MusicEmbedBuilder.formatDuration(currentPositionMs)} / ${MusicEmbedBuilder.formatDuration(durationMs)}`;
 
     return buildV2Container({
-      title: `Live Lyrics: ${trackName}`,
-      description: `**Artist:** ${artistName}\n\n${displayLines.join("\n\n")}`,
-      footer: `Playing: ${trackName} | [${elapsed} / ${duration}]`,
+      title: `🎤 Lyrics — ${trackName}`,
+      description: artistName ? `*by ${artistName}* • \`[LIVE SYNC]\`` : "`[LIVE SYNC]`",
+      sections: [
+        {
+          title: "Current Lyrics",
+          content: displayContent,
+        },
+      ],
+      footer: `elmusic live lyrics | ${progressStr}`,
     });
   }
 
-  /**
-   * Send plain static lyrics embed
-   */
-  private sendPlainLyrics(interaction: ChatInputCommandInteraction, trackName: string, artistName: string, lyrics: string) {
-    let lyricsText = lyrics;
-    if (lyricsText.length > 3500) {
-      lyricsText = lyricsText.substring(0, 3500) + "\n\n*...lirik terpotong karena terlalu panjang*";
-    }
+  private sendPlainLyrics(
+    interaction: ChatInputCommandInteraction,
+    trackName: string,
+    artistName: string,
+    lyricsText: string
+  ) {
+    const trimmed = lyricsText.length > 3900 ? lyricsText.substring(0, 3900) + "\n\n*(Lyrics truncated due to Discord length limit)*" : lyricsText;
 
     return interaction.editReply(
       buildV2Container({
-        title: `Lyrics: ${trackName}`,
-        description: `**Artist:** ${artistName}\n\n${lyricsText}`,
-        footer: "Lyrics powered by LRCLIB (Plain Mode)",
-      })
-    );
-  }
-
-  /**
-   * Send standard error embed for no lyrics found
-   */
-  private sendNoLyricsFound(interaction: ChatInputCommandInteraction, query: string) {
-    const tipsContent =
-      `Could not find any lyrics for "**${query}**".\n\n` +
-      `*Tips: Jika kamu mengambil judul dari video YouTube, terkadang judulnya mengandung nama uploader atau tag video lainnya. Cobalah mengetik pencarian bersih secara manual dengan format:*\n` +
-      `\`/lyrics query: [Nama Artis] [Judul Lagu]\``;
-
-    return interaction.editReply(
-      buildV2Container({
-        title: "No Lyrics Found",
-        description: tipsContent,
+        title: `🎤 Lyrics — ${trackName}`,
+        description: artistName ? `*by ${artistName}*` : undefined,
+        sections: [
+          {
+            title: "Lyrics",
+            content: trimmed || "No lyrics available.",
+          },
+        ],
         footer: "elmusic | leon x music system",
       })
     );
-  }
-
-  /**
-   * Helper to check if a text string contains Japanese (Kanji/Hiragana/Katakana) characters
-   */
-  private hasJapanese(text: string): boolean {
-    return /[\u3040-\u30ff\u4e00-\u9faf]/g.test(text);
   }
 }

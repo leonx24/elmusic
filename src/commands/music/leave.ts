@@ -38,13 +38,11 @@ export default class LeaveCommand extends Command {
       });
     }
 
-    const queue = client.queues.get(interaction.guildId!);
+    const queue = client.distube.getQueue(interaction.guildId!);
     if (queue) {
-      queue.destroy();
-    } else {
-      // Fallback if queue object doesn't exist but bot is in channel
-      await client.shoukaku.leaveVoiceChannel(interaction.guildId!);
+      await client.distube.stop(interaction.guildId!);
     }
+    client.distube.voices.leave(interaction.guildId!);
 
     return interaction.reply(
       MusicEmbedBuilder.success("Disconnected", "Successfully disconnected from the voice channel and cleared the queue.")

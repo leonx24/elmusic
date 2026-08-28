@@ -1,71 +1,50 @@
 # elmusic - Discord Music Bot for leon x server
 
-Discord Music Bot premium berbasis TypeScript menggunakan **Discord.js v14** dan **Shoukaku** (Lavalink wrapper). Memiliki arsitektur modular yang rapi, bersih, dan mudah dipahami.
+Discord Music Bot premium berbasis TypeScript menggunakan **Discord.js v14** dan **DisTube** (`@discordjs/voice`). Berjalan langsung di Node.js tanpa Lavalink.
 
 ## Fitur Utama
-* 🎵 **Slash Commands (/)**: Standar modern interaksi Discord.
-* ⚡ **Lavalink Audio System**: Ringan, andal, dan mendukung streaming berkualitas tinggi.
-* 📂 **Modular Structure**: File dipisahkan berdasarkan Command, Event, Structure, dan Utils.
-* 🎨 **Estetika Premium**: Desain Rich Embed yang indah terinspirasi dari Jockie Music/HD Music.
+* 🎵 **DisTube Engine**: Audio playback cepat & native via `@discordjs/voice` dan `yt-dlp`.
+* 🟢 **Spotify-First Resolution**: Metadata pencarian disinkronkan ke Spotify resmi via `@spotify/web-api-ts-sdk` agar tidak memutar cover/slowed yang salah.
+* 🍪 **YouTube Cookies Support**: Mendukung `YOUTUBE_COOKIES` untuk melewati deteksi bot / SABR.
+* ⚡ **Slash Commands & Prefix**: Mendukung `/play` dan `!play <query>`.
+* 📂 **Modular Structure**: Arsitektur rapi (Command, Event, Structure, Utils).
+* 🎨 **Estetika Premium**: Desain Rich Embed Discord Components V2.
 
 ## Struktur Direktori
 ```text
 elmusic/
 ├── src/
 │   ├── commands/             # Handler Command berdasarkan kategori
-│   │   ├── music/            # play, skip
+│   │   ├── music/            # play, skip, queue, loop, autoplay, volume, leave, 247, lyrics, help
 │   ├── events/               # Event handler untuk Client
-│   ├── structures/           # Class & Wrapper Utama (BotClient, Command, Event, Queue)
-│   ├── utils/                # Helper (embeds, logger)
+│   ├── structures/           # BotClient, Command, Event
+│   ├── utils/                # Helper (embeds, logger, spotify)
 │   ├── config.ts             # Pengaturan konfigurasi & env variables
 │   └── index.ts              # Entrypoint utama
 ```
 
 ## Persyaratan
-* **Node.js** v18 atau v20 ke atas.
-* **Lavalink Server** v4.x (Anda memerlukan server/node Lavalink yang aktif).
+* **Node.js** v20 ke atas.
+* **FFmpeg** & **Python 3** terpasang di sistem.
 * **Token Discord Bot** dengan Gateway Intents diaktifkan:
   - Guilds
   - Guild Voice States
   - Guild Messages
   - Message Content
 
-## Langkah Instalasi & Penggunaan
+## Variabel Lingkungan (.env)
+* `DISCORD_TOKEN`: Token bot Discord.
+* `CLIENT_ID`: Application ID bot.
+* `GUILD_ID`: ID Guild Discord (opsional).
+* `SPOTIFY_CLIENT_ID`: Client ID dari Spotify Dashboard (opsional).
+* `SPOTIFY_CLIENT_SECRET`: Client Secret dari Spotify Dashboard (opsional).
+* `YOUTUBE_COOKIES`: Isi teks cookies YouTube format Netscape (opsional).
+* `EMBED_COLOR`: Warna aksen embed (hex).
+* `PREFIX`: Prefix command teks (default: `!`).
 
-### 1. Klon / Download & Instalasi Dependensi
-Jalankan perintah berikut di direktori proyek:
+## Cara Menjalankan Bot
 ```bash
 npm install
-```
-
-### 2. Konfigurasi Variabel Lingkungan
-Salin file `.env.example` ke `.env`:
-```bash
-cp .env.example .env
-```
-Buka file `.env` dan lengkapi konfigurasi berikut:
-* `DISCORD_TOKEN`: Token bot Anda dari [Discord Developer Portal](https://discord.com/developers/applications).
-* `CLIENT_ID`: ID Aplikasi/Bot Anda.
-* `GUILD_ID`: ID Server Discord Anda (opsional, disarankan untuk pendaftaran Slash Command instan selama pengembangan).
-* `LAVALINK_HOST`: Alamat host server Lavalink Anda (default: `localhost`).
-* `LAVALINK_PORT`: Port server Lavalink Anda (default: `2333`).
-* `LAVALINK_PASS`: Password otentikasi Lavalink Anda (default: `youshallnotpass`).
-
-### 3. Cara Menjalankan Bot
-
-#### Mode Pengembangan (Development)
-Menjalankan bot dengan reload otomatis menggunakan `nodemon` dan `ts-node`:
-```bash
-npm run dev
-```
-
-#### Mode Produksi (Production)
-Kompilasi TypeScript menjadi JavaScript lalu jalankan bot:
-```bash
 npm run build
 npm start
 ```
-
----
-
-Dibuat khusus untuk server **leon x**. Selamat mendengarkan musik! 🎧

@@ -17,8 +17,8 @@ export default class SkipCommand extends Command {
                 ephemeral: true,
             });
         }
-        const queue = client.queues.get(interaction.guildId);
-        if (!queue || !queue.current) {
+        const queue = client.distube.getQueue(interaction.guildId);
+        if (!queue || !queue.songs || queue.songs.length === 0) {
             return interaction.reply({
                 ...MusicEmbedBuilder.error("There is no music playing right now."),
                 ephemeral: true,
@@ -31,8 +31,12 @@ export default class SkipCommand extends Command {
                 ephemeral: true,
             });
         }
-        const currentTitle = queue.current.info.title;
-        await queue.skip();
-        return interaction.reply(MusicEmbedBuilder.success("Skipped", `Skipped the current track: **${currentTitle}**`));
+        const currentSong = queue.songs[0];
+        if (!queue.autoplay && queue.songs.length <= 1) {
+            await client.distube.stop(interaction.guildId);
+            return interaction.reply(MusicEmbedBuilder.success("Stopped", `Skipped **${currentSong.name}** and ended the queue.`));
+        }
+        await client.distube.skip(interaction.guildId);
+        return interaction.reply(MusicEmbedBuilder.success("Skipped", `Skipped the current track: **${currentSong.name}**`));
     }
 }
