@@ -46,20 +46,25 @@ plugins:
     allowDirectPlaylistIds: true
     remoteCipher:
       url: "https://cipher.kikkia.dev/"
+    pot:
+      token: "${YOUTUBE_POT_TOKEN:}"
+      visitorData: "${YOUTUBE_POT_VISITOR_DATA:}"
     oauth:
       enabled: true
       refreshToken: "${YOUTUBE_REFRESH_TOKEN:}"
-      skipInitialization: false
+      skipInitialization: true
     ratelimit:
       ipBlocks: []
       excludedIps: []
       strategy: "ROTATING"
       searchTriggersFetch: false
     clients:
+      - TV
       - ANDROID_MUSIC
       - ANDROID_VR
       - MUSIC
       - WEB
+      - WEBEMBEDDED
 
 logging:
   file:
